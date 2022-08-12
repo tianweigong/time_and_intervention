@@ -1,5 +1,6 @@
-# data analysis for "active causal structure learning in continuous time"
+# active causal structure learning in continuous time 🕙
 
-Please open the `data_analysis` folder for further information.
+Please open the `data_analysis` folder for further information for data analysis and modeling.
 
-The experimental procedure is avaliable [here](https://eco.ppls.ed.ac.uk/~s1940738/demo/time_intervention/).
+Please download the `experiment` to try exploring different causal devices.
+
