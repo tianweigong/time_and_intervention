@@ -1,0 +1,676 @@
+---
+title: "simulation"
+output: html_document
+---
+
+for some pattern recover analysis in the appendix
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(tidyr)
+library(dplyr)
+library(Rmisc)
+library(reshape2)
+library(plyr)
+library(parallel)
+source("per_setting.R")
+source("fun_sim_gen.R")
+source("fun_infer_nor.R")
+source('fun_eig.R')
+set.seed(2)
+```
+
+```{r load variables}
+str_name=c('colli3','chain3','fork3','colli4','chain4','fork4','uncon3','fully3','uncon4','fully4','loop_in3','clock3','loop_out3','loop_inout4','clock4','clock_out4','loop_double_out3','loop_double_out4')
+str_node=c(3,3,3,4,4,4,3,3,4,4,
+           3,3,3,4,4,4,3,4)
+str_cyclic=c("Unlinked","Acyclic","Cyclic")[c(rep(2,6),c(1),c(2),c(1),c(2),rep(3,8))]
+str_belief=c(9,16,12,59,264,30,1,17,1,265,
+             37,35,57,3217,1449,1855,59,3233)
+str_code=c(49,35,19,3585,1556,74,1,51,1,2580,
+           36,39,43,1588,1620,1748,59,1692)
+
+
+load("DBN.Rdata")
+load('blc_var.Rda')
+```
+
+
+#get EIG
+```{r}
+load("obs.trx.Rda")
+wd_len=1000
+myblc=""
+maxtrack=6
+wd_all=45
+noact_all=apply(expand.grid(c("E","F","G","H","I","J","K","L","N"), c(1:maxtrack)), 1, paste, collapse="")
+
+c.opt=c("A"="A","B"="B","C"="C","D"="D",
+             "E"="N","F"="N","G"="N","H"="N",
+             "I"="N","J"="N","K"="N","L"="N",
+             "N"="N")
+c.blc=c("A"="","B"="","C"="","D"="",
+             "E"="A","F"="B","G"="C","H"="D",
+             "I"="","J"="","K"="","L"="",
+             "N"="")
+c.ublc=c("A"="","B"="","C"="","D"="",
+              "E"="","F"="","G"="","H"="",
+              "I"="A","J"="B","K"="C","L"="D",
+              "N"="")
+```
+
+#exp2 (skip it, there are result files already)
+```{r}
+myRun<-function(par){
+  str=par[1] %>% unlist() %>% as.character()
+  sim=par[2] %>% unlist() %>% as.character()
+  s=which(str_name==str)
+  nod=str_node[s]
+
+  if (nod==4){
+      opt_list=c("A","B","C","D","E","F","G","H","I","J","K","L","N")
+      act_type=c("A","B","C","D")
+      lis.nod=str_all4[[str_code[s]]]
+      str_all=str_all4
+      edg_all=edg_all4
+    }else{
+      opt_list=c("A","B","C","E","F","G","I","J","K","N")
+      act_type=c("A","B","C")
+      lis.nod=str_all3[[str_code[s]]]
+      str_all=str_all3
+      edg_all=edg_all3
+  }
+
+  lis.md=lis.eig=lis.ecc=list()
+
+  sqc=as.data.frame(matrix(NA,ncol = 6, nrow=0)) %>%
+    setNames(c("obj","time","act","blc","all_idx","ori"))
+  sqc=MySqcGen(sample(act_type,1),1,myblc,sqc,lis.nod,k_g,r_g,w_pow,trial_end,p_trim)
+
+  tflag=0
+  aflag=5
+  myblc=""
+  for (wd in 2:43){
+    wd_left=45-wd
+
+    if (nod==4){
+      opt_list=MyOpt(c("A","B","C","D","E","F","G","H","I","J","K","L","N"),myblc,1)
+    }else{
+      opt_list=MyOpt(c("A","B","C","E","F","G","I","J","K","N"),myblc,1)
+    }
+
+    sqc1=sqc %>% subset(time<(wd-1)*1000)
+
+    act_exist= sqc1 %>% subset(act==1)
+
+    if (tflag){
+      prior=prior_all[[2]]
+    }else{
+       prior_all=MyNorSummary(sqc1,k_g,r_g,str_all,p_trim,(wd-1)*wd_len,0)
+       prior=prior_all[[2]]
+       if (prior_all[[3]]>0){tflag=1}
+    }
+
+    act_ongoing=act_exist %>% subset(time>(wd-4)*wd_len & time<wd*wd_len) #too early actions can not affect the EIG later
+    mtx_exist=matrix(nrow=0,ncol = wd_left)
+    if (nrow(act_ongoing)>0){
+      act_ongoing$wd=ceiling(act_ongoing$time/wd_len)
+      mtx_exist=matrix(nrow=nrow(act_ongoing),ncol = wd_left)
+      for (j in 1:nrow(act_ongoing)){ #begin at wd+1 -- when the al start to cal EIG
+          mtx_exist[j,]=c(paste(act_ongoing$obj[j],c((wd-ceiling(act_ongoing$time[j]/wd_len)):maxtrack),sep=""),
+                          rep("",100))[1:ncol(mtx_exist)]
+      }
+    }
+
+    samsize=512
+    gtlist=sample(c(1:length(prior)),samsize,prob=prior,replace = T)
+    cc_gr=list()
+    rw_gr=list()
+    for (k in opt_list){cc_gr[[k]]=rw_gr[[k]]=matrix(0,nrow=samsize,ncol=min((wd_all-wd+1),maxtrack))}
+    sqc2=sqc1 %>% subset(time<(wd-1)*wd_len &time>(wd-4)*wd_len)
+    sqc2$wd=ceiling(sqc2$time/wd_len)
+    for (mm in 1:samsize){
+       re=MyEIGandECC(wd_left,opt_list,act_type,myblc,mtx_exist,nod=nod,prior,gt=gtlist[mm],sqc2,wd)
+       for (k in opt_list){
+          rw_gr[[k]][mm,1:length(re[[1]][[k]])]=re[[1]][[k]]
+          cc_gr[[k]][mm,1:length(re[[2]][[k]])]=re[[2]][[k]]
+       }
+    }
+
+    eig=c()
+    for (k in opt_list){
+      eig[k]=mean(apply(rw_gr[[k]],1,function(x){sum(x*(1-(wd+seq(0,ncol(rw_gr[[k]])-1))/wd_all))}))
+    }
+
+    ecc=c()
+    sqc1$wd=ceiling(sqc1$time/wd_len)
+    for (k in opt_list){
+      sqc_ago=c(sum(sqc1$wd==wd-3),
+                sum(sqc1$wd==wd-2),
+                sum(sqc1$wd==wd-1))
+      ev=cbind(matrix(sqc_ago,ncol=length(sqc_ago),nrow=nrow(cc_gr[[k]]),byrow=T),cc_gr[[k]])
+      rol=matrix(NA,ncol=ncol(cc_gr[[k]]),nrow=nrow(cc_gr[[k]]))
+      for (r in 1:ncol(cc_gr[[k]])){rol[,r]=(rowSums(ev[,r:(r+3),drop=F])^2)*(1-(wd+(r-1))/wd_all)}
+      ecc[k]=mean(rowSums(rol))
+    }
+
+    x=exp((eig-ecc*1.59*10^-3+c(rep(0,length(opt_list)-1),1)*7.63)/1.86)
+    myact=sample(opt_list,1,prob=x/sum(x))
+    if (myact %in% c("A","B","C","D")){
+      sqc=MySqcGen(myact,wd*1000+1,myblc,sqc,lis.nod,k_g,r_g,w_pow,trial_end,p_trim)
+      aflag=aflag-1
+    }else if (myact %in% c("E","F","G","H")){
+      sqc[nrow(sqc)+1,]=c(c.blc[myact],wd*1000+1,-1,-1,NA,NA)
+    }else if (myact %in% c("E","F","G","H")){
+      sqc[nrow(sqc)+1,]=c(c.blc[myact],wd*1000+1,-1,1,NA,NA)
+    }
+
+    myblc=MyCurBlc(myact,myblc)
+    sqc$time=as.numeric(sqc$time)
+    sqc=MySqcShape(sqc)
+
+    if (myblc!=""){
+      e=intersect(which(sqc$time>wd*1000),which(sqc$time<(wd+1)*1000)) %>%
+        intersect(which(sqc$obj %in% unlist(strsplit(myblc, split = "")))) %>%
+        intersect(which(sqc$act==0))
+      if (length(e)>0){
+        sqc=sqc[-e,]
+        for (j in na.omit(sqc$all_idx)[-1]){
+          j2=which(sqc$all_idx==j)
+          if (sqc$act[j2]==0 & !(sqc$ori[j2] %in% sqc$ori[1:j2-1])){sqc=sqc[-j2,]}
+        }
+        sqc=MySqcShape(sqc)
+      }
+    }
+
+    lis.md[[length(lis.md)+1]]=x
+    lis.eig[[length(lis.eig)+1]]=eig
+    lis.ecc[[length(lis.ecc)+1]]=ecc
+
+    if (aflag==0){break}
+  }
+  lis.sim=list("sqc"=sqc,"md"=lis.md,"eig"=lis.eig,"ecc"=lis.ecc,"delay"=mycond)
+  save(lis.sim,file=paste("sim_learner2/",str,"_",sim,".Rda",sep=""))
+}
+
+mycond="reliable"
+k_g=k_g_r;r_g=r_g_r
+p_trim=c(qgamma(10^-8,k_g,r_g),qgamma(1-10^-8,k_g,r_g))
+load("obs.r.Rda")
+
+df=expand.grid(str_name,c(1:30))
+wholelist=lapply(as.list(1:dim(df)[1]), function(x) df[x[1],])
+filelist= list.files("sim_learner2")
+for (k in length(wholelist):1){
+  if ( paste(as.character(wholelist[[k]][[1]]),"_",wholelist[[k]][[2]],".Rda",sep = "") %in% filelist){
+    wholelist[[k]]=NULL
+  }
+}
+mclapply(wholelist,myRun,mc.cores = 22)
+
+mycond="unreliable"
+k_g=k_g_i;r_g=r_g_i
+p_trim=c(qgamma(10^-8,k_g,r_g),qgamma(1-10^-8,k_g,r_g))
+load("obs.i.Rda")
+# str_name[c(1:6,11:16)]
+df=expand.grid(str_name,c(51:80))
+wholelist=lapply(as.list(1:dim(df)[1]), function(x) df[x[1],])
+filelist= list.files("sim_learner2")
+for (k in length(wholelist):1){
+  if ( paste(as.character(wholelist[[k]][[1]]),"_",wholelist[[k]][[2]],".Rda",sep = "") %in% filelist){
+    wholelist[[k]]=NULL
+  }
+}
+mclapply(wholelist,myRun,mc.cores = 22)
+
+
+mycond="reliable"
+k_g=k_g_r;r_g=r_g_r
+p_trim=c(qgamma(10^-8,k_g,r_g),qgamma(1-10^-8,k_g,r_g))
+load("obs.r.Rda")
+df=expand.grid(c("uncon3","uncon4"),c(31:45))
+wholelist=lapply(as.list(1:dim(df)[1]), function(x) df[x[1],])
+mclapply(wholelist,myRun,mc.cores = 22)
+
+mycond="unreliable"
+k_g=k_g_i;r_g=r_g_i
+p_trim=c(qgamma(10^-8,k_g,r_g),qgamma(1-10^-8,k_g,r_g))
+load("obs.i.Rda")
+df=expand.grid(c("uncon3","uncon4"),c(81:95))
+wholelist=lapply(as.list(1:dim(df)[1]), function(x) df[x[1],])
+mclapply(wholelist,myRun,mc.cores = 22)
+```
+
+
+#exp1 (skip it, there are result files already)
+```{r}
+myRun<-function(par){
+  str=par[1] %>% unlist() %>% as.character()
+  sim=par[2] %>% unlist() %>% as.character()
+  s=which(str_name==str)
+  nod=str_node[s]
+
+  if (nod==4){
+      opt_list=act_type=c("A","B","C","D","N")
+      lis.nod=str_all4[[str_code[s]]]
+      str_all=str_all4
+      edg_all=edg_all4
+    }else{
+      opt_list=act_type=c("A","B","C","N")
+      lis.nod=str_all3[[str_code[s]]]
+      str_all=str_all3
+      edg_all=edg_all3
+  }
+
+  df.md=df.eig=df.ecc=data.frame(matrix(ncol=length(opt_list),nrow=0)) %>% setNames(opt_list)
+
+  sqc=as.data.frame(matrix(NA,ncol = 5, nrow=0)) %>%
+    setNames(c("obj","time","act","blc","all_idx"))
+  sqc=MySqcGen(sample(opt_list[1:nod],1),1,myblc,sqc,lis.nod,k_g,r_g,w_pow,trial_end,p_trim)
+
+  tflag=0
+  aflag=5
+  for (wd in 2:43){
+    wd_left=45-wd
+
+    sqc1=sqc %>% subset(time<(wd-1)*1000)
+
+    act_exist= sqc1 %>% subset(act==1)
+
+    if (tflag){
+      prior=prior_all[[2]]
+    }else{
+       prior_all=MyNorSummary(sqc1,k_g,r_g,str_all,p_trim,(wd-1)*wd_len,0)
+       prior=prior_all[[2]]
+       if (prior_all[[3]]>0){tflag=1}
+    }
+
+    act_ongoing=act_exist %>% subset(time>(wd-4)*wd_len & time<wd*wd_len) #too early actions can not affect the EIG later
+    mtx_exist=matrix(nrow=0,ncol = wd_left)
+    if (nrow(act_ongoing)>0){
+      act_ongoing$wd=ceiling(act_ongoing$time/wd_len)
+      mtx_exist=matrix(nrow=nrow(act_ongoing),ncol = wd_left)
+      for (j in 1:nrow(act_ongoing)){ #begin at wd+1 -- when the al start to cal EIG
+          mtx_exist[j,]=c(paste(act_ongoing$obj[j],c((wd-ceiling(act_ongoing$time[j]/wd_len)):maxtrack),sep=""),
+                          rep("",100))[1:ncol(mtx_exist)]
+      }
+    }
+
+    samsize=512
+    gtlist=sample(c(1:length(prior)),samsize,prob=prior,replace = T)
+    cc_gr=list()
+    rw_gr=list()
+    for (k in opt_list){cc_gr[[k]]=rw_gr[[k]]=matrix(0,nrow=samsize,ncol=min((wd_all-wd+1),maxtrack))}
+    sqc2=sqc %>% subset(time<(wd-1)*wd_len &time>(wd-4)*wd_len)
+    sqc2$wd=ceiling(sqc2$time/wd_len)
+    for (mm in 1:samsize){
+       re=MyEIGandECC(wd_left,opt_list,act_type,myblc,mtx_exist,nod=nod,prior,gt=gtlist[mm],sqc2,wd)
+       for (k in opt_list){
+          rw_gr[[k]][mm,1:length(re[[1]][[k]])]=re[[1]][[k]]
+          cc_gr[[k]][mm,1:length(re[[2]][[k]])]=re[[2]][[k]]
+       }
+    }
+
+    eig=c()
+    for (k in opt_list){
+      eig[k]=mean(apply(rw_gr[[k]],1,function(x){sum(x*(1-(wd+seq(0,ncol(rw_gr[[k]])-1))/wd_all))}))
+    }
+
+    ecc=c()
+    sqc1$wd=ceiling(sqc1$time/wd_len)
+    for (k in opt_list){
+      sqc_ago=c(sum(sqc1$wd==wd-3),
+                sum(sqc1$wd==wd-2),
+                sum(sqc1$wd==wd-1))
+      ev=cbind(matrix(sqc_ago,ncol=length(sqc_ago),nrow=nrow(cc_gr[[k]]),byrow=T),cc_gr[[k]])
+      rol=matrix(NA,ncol=ncol(cc_gr[[k]]),nrow=nrow(cc_gr[[k]]))
+      for (r in 1:ncol(cc_gr[[k]])){rol[,r]=(rowSums(ev[,r:(r+3),drop=F])^2)*(1-(wd+(r-1))/wd_all)}
+      ecc[k]=mean(rowSums(rol))
+    }
+
+    x=exp((eig-ecc*8.82*10^-3+c(rep(0,nod),1)*7.91)/2.27)
+    myact=sample(opt_list,1,prob=x/sum(x))
+    if (myact!="N"){
+      sqc=MySqcGen(myact,wd*1000+1,myblc,sqc,lis.nod,k_g,r_g,w_pow,trial_end,p_trim)
+      aflag=aflag-1
+    }
+
+    df.md[nrow(df.md)+1,]=x
+    df.eig[nrow(df.eig)+1,]=eig
+    df.ecc[nrow(df.ecc)+1,]=ecc
+
+    if (aflag==0){break}
+  }
+  lis.sim=list("sqc"=sqc,"md"=df.md,"eig"=df.eig,"ecc"=df.ecc,"delay"=mycond)
+  save(lis.sim,file=paste("sim_learner/",str,"_",sim,".Rda",sep=""))
+}
+
+mycond="reliable"
+k_g=k_g_r;r_g=r_g_r
+p_trim=c(qgamma(10^-8,k_g,r_g),qgamma(1-10^-8,k_g,r_g))
+load("obs.r.Rda")
+
+df=expand.grid(str_name,c(11:30))
+wholelist=lapply(as.list(1:dim(df)[1]), function(x) df[x[1],])
+mclapply(wholelist,myRun,mc.cores = 17)
+
+mycond="unreliable"
+k_g=k_g_i;r_g=r_g_i
+p_trim=c(qgamma(10^-8,k_g,r_g),qgamma(1-10^-8,k_g,r_g))
+load("obs.i.Rda")
+
+df=expand.grid(str_name,c(61:80))
+wholelist=lapply(as.list(1:dim(df)[1]), function(x) df[x[1],])
+mclapply(wholelist,myRun,mc.cores = 17)
+```
+
+
+```{r}
+filelist= list.files("sim_learner")
+df.all=data.frame(sim=rep(NA,length(filelist)))%>%
+  mutate(trName=NA,nod=NA,cyclic=NA,delayCond=NA,act_gap=NA,act_num=NA)
+                 
+for (k in 1:length(filelist)){
+  load(paste("sim_learner/",filelist[k],sep=""))
+  df.all$sim[k]=gsub("_","",substr(filelist[k],nchar(filelist[k])-5,nchar(filelist[k])))
+  df.all$trName[k]=substr(filelist[k],1,nchar(filelist[k])-nchar(df.all$sim[k])-1)
+  df.all$nod[k]=str_node[str_name== df.all$trName[k]]
+  df.all$cyclic[k]=str_cyclic[str_name== df.all$trName[k]]
+  df.all$delayCond[k]=lis.sim$delay
+  act=lis.sim$sqc %>% subset(act==1)
+  df.all$act_gap[k]=mean(diff(act$time))
+  df.all$act_num[k]=nrow(act)
+}
+
+filelist= list.files("sim_learner2")
+df.all2=data.frame(sim=rep(NA,length(filelist)))%>%
+  mutate(trName=NA,nod=NA,cyclic=NA,delayCond=NA,act_gap=NA,act_num=NA,blc=NA)
+                 
+for (k in 1:length(filelist)){
+  load(paste("sim_learner2/",filelist[k],sep=""))
+  df.all2$sim[k]=gsub("_","",substr(filelist[k],nchar(filelist[k])-5,nchar(filelist[k])))
+  df.all2$trName[k]=substr(filelist[k],1,nchar(filelist[k])-nchar(df.all2$sim[k])-1)
+  df.all2$nod[k]=str_node[str_name== df.all2$trName[k]]
+  df.all2$cyclic[k]=str_cyclic[str_name== df.all2$trName[k]]
+  df.all2$delayCond[k]=lis.sim$delay
+  act=lis.sim$sqc %>% subset(act==1)
+  blc=lis.sim$sqc %>% subset(act==-1 & blc==-1)
+  df.all2$act_gap[k]=mean(diff(act$time))
+  df.all2$act_num[k]=nrow(act)
+  df.all2$blc_num[k]=nrow(blc)
+}
+```
+
+```{r}
+df.all%>% 
+  subset(trName %in% str_name[c(1:6,11:16)]) %>% 
+  summarySE(measurevar = "act_num",groupvars = "cyclic",na.rm=T) %>% 
+  ggplot(aes(x=cyclic,y=act_num,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  # geom_errorbar(aes(ymin = act_num-ci,ymax=act_num+ci),width=0.3,size=0.6,color="gray40")+
+  scale_y_continuous(limits = c(3.4,5.2))+
+  theme_bw()+
+  ylab("Activating")+
+  xlab('Cyclicity')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="rec_cyc_exp1.pdf",width = 2.2,height =2) #width = 7
+
+df.all2%>% 
+  summarySE(measurevar = "act_num",groupvars = "cyclic",na.rm=T) %>% 
+  mutate(cyclic=factor(cyclic,levels = c("Unlinked","Acyclic","Cyclic")))%>%
+  ggplot(aes(x=cyclic,y=act_num,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  theme_bw()+
+  scale_y_continuous(limits = c(3.4,5.2))+
+  ylab("Activating")+
+  xlab('Cyclicity')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="rec_cyc_exp2.pdf",width = 2.2,height =2) #width = 7
+```
+
+```{r}
+df.all%>% 
+  subset(trName %in% str_name[c(1:6,11:16)]) %>% 
+  summarySE(measurevar = "act_num",groupvars = "nod",na.rm=T) %>% 
+  mutate(nod=factor(nod,levels = c(3,4),labels = c("Three-node","Four-node")))%>%
+  ggplot(aes(x=nod,y=act_num,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  scale_y_continuous(limits = c(2.9,5.4))+
+  theme_bw()+
+  ylab("Activating")+
+  xlab('Structure Nodes')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="rec_nod_exp1.pdf",width = 2.2,height =2) #width = 7
+
+df.all2%>% 
+  summarySE(measurevar = "act_num",groupvars = "nod",na.rm=T) %>% 
+  mutate(nod=factor(nod,levels = c(3,4),labels = c("Three-node","Four-node")))%>%
+  ggplot(aes(x=nod,y=act_num,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  theme_bw()+
+  scale_y_continuous(limits = c(2.9,5.4))+
+  ylab("Activating")+
+  xlab('Structure Nodes')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="rec_nod_exp2.pdf",width = 2.2,height =2) #width = 7
+```
+
+
+```{r}
+df.all%>% 
+  subset(trName %in% str_name[c(1:6,11:16)]) %>% 
+  mutate(act_gap=act_gap/1000)%>%
+  summarySE(measurevar = "act_gap",groupvars = "cyclic",na.rm=T) %>% 
+  mutate(cyclic=factor(cyclic,levels = c("Unlinked","Acyclic","Cyclic")))%>%
+  ggplot(aes(x=cyclic,y=act_gap,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  scale_y_continuous(limits = c(8,12))+
+  theme_bw()+
+  ylab("Interval (s)")+
+  xlab('Cyclicity')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="rec_int_exp1.pdf",width = 2.2,height =2) #width = 7
+
+df.all2%>% 
+  mutate(act_gap=act_gap/1000)%>%
+  summarySE(measurevar = "act_gap",groupvars = "cyclic",na.rm=T) %>% 
+  mutate(cyclic=factor(cyclic,levels = c("Unlinked","Acyclic","Cyclic")))%>%
+  ggplot(aes(x=cyclic,y=act_gap,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  scale_y_continuous(limits = c(8,12))+
+  theme_bw()+
+  ylab("Interval (s)")+
+  xlab('Cyclicity')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+
+# ggsave(file="rec_int_exp2.pdf",width = 2.2,height =2) #width = 7
+```
+
+#blc
+```{r}
+df.all2%>% 
+  summarySE(measurevar = "blc_num",groupvars = "cyclic",na.rm=T) %>% 
+  mutate(cyclic=factor(cyclic,levels = c("Unlinked","Acyclic","Cyclic")))%>%
+  ggplot(aes(x=cyclic,y=blc_num,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  scale_y_continuous(limits = c(1.4,1.6))+
+  theme_bw()+
+  ylab("Blocking")+
+  xlab('Cyclicity')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="rec_blc_exp2.pdf",width = 2.2,height =2) #width = 7
+
+```
+
+
+#get the noisy-IO accuracy 
+##exp1 (skip it)
+```{r}
+MyNorRun<-function(bat){
+  sti_list=filelist[which(c(1:length(filelist)) %% 20==bat)]
+  
+  df=data.frame(file=sti_list,noisyIO=NA,trim=NA)
+  for (k in 1:length(sti_list)){
+    load(paste(filename,"/",sti_list[k],sep=""))
+    sqc=lis.sim[["sqc"]]
+    if (lis.sim$delay=="reliable"){k_g=k_g_r;r_g=r_g_r}else{k_g=k_g_i;r_g=r_g_i}
+    p_trim=c(qgamma(10^-8,k_g,r_g),qgamma(1-10^-8,k_g,r_g))
+    x=gsub("_","",substr(sti_list[k],nchar(sti_list[k])-5,nchar(sti_list[k])))
+    tr=substr(sti_list[k],1,nchar(sti_list[k])-nchar(x)-1)
+    tr_code=str_code[str_name== tr]
+    nod=str_node[str_name== tr]
+    if (nod==3){
+      str_all=str_all3; edg_all=edg_all3
+    }else{
+      str_all=str_all4; edg_all=edg_all4
+    }
+    re=MyNorSummary(sqc,k_g,r_g,str_all,p_trim,trial_end,0)
+    df$trim[k]=re[[3]]
+    pos=re[[2]]
+    N=nrow(subset(sqc,act!=-1))
+    
+    IO=rep(NA,length(edg_all[[1]]))
+    for (m in 1:length(IO)){
+      tmp=rep(NA,4)
+      for (j in 1:4){tmp[j]=sum(pos[which(sapply(edg_all,"[",m)==c(0,1,2,3)[j])])}
+      tmp_sf=exp(tmp/(t1*N+t2))
+      IO[m]=(tmp_sf/sum(tmp_sf))[which(c(0,1,2,3)==edg_all[[tr_code]][m])]
+    }
+    df$noisyIO[k]=mean(IO)
+    
+  }
+  save(df,file = paste("sim_learner_re/",filename,".",bat,".Rda",sep=""))
+}
+
+t1=0.02
+t2=0.32
+filename="sim_learner"
+filelist= list.files(filename)
+wholelist=as.list(c(0:19))
+mclapply(wholelist,MyNorRun,mc.cores = 20)
+
+t1=0.01
+t2=0.34
+filename="sim_learner2"
+filelist= list.files(filename)
+wholelist=as.list(c(0:19))
+mclapply(wholelist,MyNorRun,mc.cores = 20)
+
+
+
+sti_list=c(paste("uncon3_",c(31:45),".Rda",sep=""),
+           paste("uncon4_",c(31:45),".Rda",sep=""))
+
+```
+
+```{r}
+filelist=list.files("sim_learner_re")
+df.acc=data.frame()
+for (k in filelist[startsWith(filelist,"sim_learner.")]){
+  load(paste("sim_learner_re/",k,sep = ""))
+  df.acc=rbind(df.acc,df)
+}
+sum(df.acc$trim>0)
+df.acc$code=sapply(strsplit(df.acc$file,"_"),"[",1)
+df.acc$cyclic="Cyclic"
+df.acc$cyclic[which(df.acc$code %in% c("chain3","chain4","colli3","colli4","fork3","fork4",
+                                       "fully3","fully4"))]="Acyclic"
+df.acc$cyclic[which(df.acc$code %in% c("uncon3","uncon4"))]="Unlinked"
+
+strlist=c()
+for (k in str_name[c(1:6,11:16)]){
+  strlist=c(strlist,which(startsWith(df.acc$file,k)))
+}
+df.pic=df.acc[strlist,]
+
+df.pic %>% 
+  subset(trim==0)%>% 
+  summarySE(measurevar = "noisyIO",groupvars="cyclic")%>%
+  mutate(cyclic=factor(cyclic,levels = c("Acyclic","Cyclic")))%>%
+  ggplot(aes(x=cyclic,y=noisyIO,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  scale_y_continuous(limits = c(0.4,0.7))+
+  theme_bw()+
+  ylab("Noisy-IO Accuracy")+
+  xlab('Cyclicity')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="rec_acc_exp.pdf",width = 2.2,height =2) #width = 7
+```
+
+```{r}
+filelist=list.files("sim_learner_re")
+df.acc2=data.frame()
+for (k in filelist[startsWith(filelist,"sim_learner2.")]){
+  load(paste("sim_learner_re/",k,sep = ""))
+  df.acc2=rbind(df.acc2,df)
+}
+sum(df.acc2$trim>0)
+df.acc2$code=sapply(strsplit(df.acc2$file,"_"),"[",1)
+df.acc2$cyclic="Cyclic"
+df.acc2$cyclic[which(df.acc2$code %in% c("chain3","chain4","colli3","colli4","fork3","fork4",
+                                       "fully3","fully4"))]="Acyclic"
+df.acc2$cyclic[which(df.acc2$code %in% c("uncon3","uncon4"))]="Unlinked"
+
+df.pic=df.acc2
+
+df.pic %>% 
+  subset(trim==0)%>% 
+  summarySE(measurevar = "noisyIO",groupvars="cyclic")%>%
+  mutate(cyclic=factor(cyclic,levels = c("Unlinked","Acyclic","Cyclic")))%>%
+  ggplot(aes(x=cyclic,y=noisyIO,group=1))+
+  geom_point(size=2,color="gray40")+
+  geom_line(size=0.5,color="gray40")+
+  scale_y_continuous(limits = c(0.4,0.7))+
+  theme_bw()+
+  ylab("Noisy-IO Accuracy")+
+  xlab('Cyclicity')+
+  theme(text = element_text(size=10),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="rec_acc_exp2.pdf",width = 2.2,height =2) #width = 7
+```
+

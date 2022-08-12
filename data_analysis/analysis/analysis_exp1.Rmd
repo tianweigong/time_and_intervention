@@ -1,0 +1,763 @@
+---
+title: "experiment1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(Rmisc)
+library(reshape2)
+library(plyr)
+library(lmerTest)
+library(knitr)
+library(data.table)
+library(effsize)
+library(ExactMultinom)
+library(ggrepel)
+source("per_setting.R")
+```
+
+```{r load variables}
+str_name=c('colli3','chain3','fork3','colli4','chain4','fork4',
+           'loop_in3','clock3','loop_out3','loop_inout4','clock4','clock_out4')
+
+str_root=list(c('A','B'),c('A','B'),c('A'),c("A","B","C"),c("A","B","C"),c("A"),
+              c('A','B','C'),c('A','B','C'),c("A","B","C"),c("A","B","C"),c("A","B","C","D"),c("A","B","C"))
+
+str_node=c(3,3,3,4,4,4,3,3,3,4,4,4)
+non_link=c(1,1,1,3,3,3,1,0,1,3,2,2)
+str_belief=c(13,11,5,299,218,30,
+             50,35,33,1385,1449,1370)
+str_code=c(4,7,6,8,84,74,
+           15,39,23,276,1620,1108)
+
+load("DBN.Rdata")
+load("exp1_final.Rda")
+df.eve$cyclic=NA
+df.eve$cyclic[which(df.eve$trName %in% str_name[1:6])]="acyclic"
+df.eve$cyclic[which(df.eve$trName %in% str_name[7:12])]="cyclic"
+df.eve$wd=ceiling(df.eve$time/1000)
+
+contrasts(df.off$cyclic)=contr.treatment(2)-matrix(rep(1/2, 2), ncol=1)
+contrasts(df.off$delayCond)=contr.treatment(2)-matrix(rep(1/2, 2), ncol=1)
+contrasts(df.off$nodeNum)=contr.treatment(2)-matrix(rep(1/2, 2), ncol=1)
+```
+
+
+```{r calculating variables}
+#events per second
+df.off=df.off %>% mutate(eve_num=NA)
+for (k in 1:nrow(df.off)){
+  df= df.eve %>% subset(subID==df.off$subID[k] & trName==df.off$trName[k] & act %in% c(0,1))
+  df.off$eve_num[k]=nrow(df)/45
+}
+
+#IO accuracy
+df.off=df.off %>% mutate(acc_nor=NA,acc_div_nor=NA,ent_nor=NA,cal_cut=NA)
+f=list.files(path = 'exp1_nor/',pattern = "\\.Rda$")
+
+for (i in f){
+  load(paste('exp1_nor/',i,sep = ""))
+  sub=df.jud.nor$subID[1]
+  if (!(sub %in% unique(df.off$subID))){next}
+  df.jud.nor=df.jud.nor[df.jud.nor$wd==45,]
+  for (k in 1:nrow(df.jud.nor)){
+    gd=str_code[which(str_name==df.jud.nor$trName[k])]
+    l=which(df.off$trName==df.jud.nor$trName[k] & df.off$subID==df.jud.nor$subID[k]) 
+    df.off$acc_nor[l]=df.jud.nor$acc_nor[k]%>% as.numeric() %>% round(2)
+    df.off$acc_div_nor[l]=df.jud.nor$acc_div_nor[k] %>% as.numeric() %>% round(2)
+    df.off$ent_nor[l]=df.jud.nor$ent_nor[k] %>% as.numeric() %>% round(2)
+    df.off$cal_cut[l]=df.jud.nor$cal_cut[k] %>% as.numeric()
+    
+    if (df.off$cal_cut[l]!=0 && df.off$acc_nor[l]<0.99){df.off$acc_nor[l]=NA}
+  }
+}
+
+#act numbers
+df.off=df.off %>% mutate(act_num=NA)
+for (k in 1:nrow(df.off)){
+  df= df.eve %>% subset(subID==df.off$subID[k] & trName==df.off$trName[k] & act %in% c(0,1))
+  ac=df %>% subset(act==1)
+  df.off$act_num[k]=nrow(ac)
+}
+
+#acylic class vs. aclclic class
+df.off$acc_cycClass=0
+
+for (k in 1:nrow(df.off)){
+  if (df.off$nodeNum[k]==3){acycBelief=acycBelief3}else{acycBelief=acycBelief4}
+  if (df.off$cyclic[k]=="cyclic" && df.off$belief[k]>acycBelief){df.off$acc_cycClass[k]=1}
+  if (df.off$cyclic[k]!="cyclic" && df.off$belief[k]<=acycBelief){df.off$acc_cycClass[k]=1}
+}
+
+#bi-directional link
+df.off$bilink= as.numeric(df.off$n1_dir==3)+as.numeric(df.off$n2_dir==3)+as.numeric(df.off$n3_dir==3)+
+  replace(as.numeric(df.off$n4_dir==3), is.na(df.off$n4_dir), 0)+
+  replace(as.numeric(df.off$n5_dir==3), is.na(df.off$n5_dir), 0)+
+  replace(as.numeric(df.off$n6_dir==3), is.na(df.off$n6_dir), 0)
+```
+
+```{r calculating intervention variables}
+#interval
+df.act=data.table()
+for (i in unique(df.eve$subID)){
+  for (j in unique(df.eve$trName)){
+    sub=df.eve[subID==i & trName==j]
+    sub$eve_gap=c(NA,diff(sub$time))
+    act=sub[act==1]
+    act$ActOrder=c(1:nrow(act))
+    act$gap=c(NA,diff(act$time))
+    act$cyclic=as.character(unique(df.off[subID==i&trName==j,cyclic]))
+    df.act=rbind(df.act,act)
+  }
+}
+
+df.act=df.act%>%mutate(delayCond=as.factor(delayCond),
+              cyclic=as.factor(cyclic),
+              nodeNum=as.factor(nodeNum))
+
+contrasts(df.act$cyclic)=contr.treatment(2)-matrix(rep(1/2, 2), ncol=1)
+contrasts(df.act$delayCond)=contr.treatment(2)-matrix(rep(1/2, 2), ncol=1)
+contrasts(df.act$nodeNum)=contr.treatment(2)-matrix(rep(1/2, 2), ncol=1)
+
+df.act.agg=df.act[,.(gap=mean(gap,na.rm=T)), by=c("subID","trName","delayCond","cyclic",'nodeNum')]
+
+#where to intervene
+df.where=df.eve%>% 
+  subset(act==1)%>%
+  mutate(uni_trial=paste(subID,trName,sep="_"),actNum=NA,newNode=NA)
+for (k in unique(df.where$uni_trial)){
+  a_idx=which(df.where$uni_trial==k)
+  df.where$actNum[a_idx]=seq(1:length(a_idx))
+  df.where$newNode[a_idx[1]]=T
+  if (length(a_idx)==1){next}
+  for (i in 2:length(a_idx)){
+    df.where$newNode[a_idx[i]]=!(df.where$obj[a_idx[i]] %in% df.where$obj[a_idx[1:(i-1)]])
+  }
+}
+
+#IO choice
+load("mdall.Rda")
+
+IOchoice=mdall%>%
+  subset(subAct%in%c("A","B","C","D") & choice %in% c("A","B","C","D"))%>%
+  mutate(uni_trial=paste(subID,trName,sep="_"))
+
+#root node
+rootnode=list("colli3"=c("A","B"),"chain3"=c("A"),"fork3"=c("A"),
+              "colli4"=c("A","B","C"),"chain4"=c("A"),"fork4"=c("A"),
+              "loop_in3"=c("A"),"loop_inout4"=c("A"))
+
+df.root=df.where%>%as.data.frame() %>% 
+  subset(act==1 & trName %in% names(rootnode))%>%
+  mutate(uni_trial=paste(subID,trName,sep="_"),root=NA)
+
+for (k in names(rootnode)){
+  a_idx=which(df.root$trName==k)
+  df.root$root[a_idx]=df.root$obj[a_idx] %in% rootnode[[k]]
+}
+
+# save(df.jud,df.act,df.act.agg,df.eve,df.off,df.root,df.where,file="exp1_forComb.Rda")
+
+```
+
+
+```{r demographic}
+table(df.dmg$gender)
+summarySE(df.dmg,measurevar = "age")
+table(df.dmg$delayCond)
+```
+
+# ACC
+```{r}
+#how many times did they confirm their answers
+df.jud[time!=0,.(midjud=.N),by=c("subID","trName","cyclic","nodeNum","delayCond")] %>%
+  summarySE(measurevar = 'midjud')
+```
+
+```{r}
+# final answers vs. initial answers
+df.mid=df.jud[time!=0 & online==1,.(midjud=.N,ans_final=NA,ans_initial=NA),by=c("subID","trName")]
+for (k in 1:nrow(df.mid)){
+  df= df.jud %>% subset(subID==df.mid$subID[k] & trName==df.mid$trName[k] & time!=0)
+  df.mid$ans_initial[k]=df$accLink[1]
+  df.mid$ans_final[k]=df$accLink[nrow(df)]
+}
+nrow(df.mid)/nrow(df.off)
+df=df.mid%>%gather(judge,acc,c(ans_final,ans_initial)) %>% mutate(judge=factor(judge,levels = c("ans_initial","ans_final")))
+df%>% summarySE(measurevar = 'acc',groupvars = 'judge')
+contrasts(df$judge)=contr.treatment(2)-matrix(rep(1/2, 2), ncol=1)
+m=lmer(scale(acc)~judge+(1+judge|subID)+(1+judge|trName),df)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+#structure basic
+t.test(df.dmg[delayCond=="reliable",subACC],mu=0.25)
+cohen.d(df.dmg[delayCond=="reliable",subACC],f=NA,mu=0.25)
+
+t.test(df.dmg[delayCond=="unreliable",subACC],mu=0.25)
+cohen.d(df.dmg[delayCond=="unreliable",subACC],f=NA,mu=0.25)
+```
+
+```{r}
+#description summary
+df.off%>% summarySE(measurevar = "accLink",groupvars = "delayCond") %>%  mutate_if(is.numeric, round,2)
+df.off%>% summarySE(measurevar = "accLink",groupvars = "cyclic") %>%  mutate_if(is.numeric, round,2)
+df.off%>% summarySE(measurevar = "accLink",groupvars = "nodeNum") %>%  mutate_if(is.numeric, round,2)
+```
+
+
+```{r}
+#main test
+m=lmer(scale(accLink)~cyclic*nodeNum*delayCond+(1+cyclic*nodeNum|subID)+(1+delayCond|trName),df.off)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+anova(m)
+```
+# Error patterns
+```{r}
+#chain3
+tmp=df.off$belief[df.off$trName=="chain3"]
+sort(table(tmp))
+
+tmp=df.off$belief[df.off$trName=="chain3" &df.off$delayCond =="reliable"]
+table(tmp)/length(tmp)
+
+tmp=df.off$belief[df.off$trName=="chain3" &df.off$delayCond =="unreliable"]
+table(tmp)/length(tmp)
+
+tmp=df.off %>% subset(trName=="chain3")
+table(tmp$delayCond,tmp$belief==14) %>% chisq.test()
+
+#chain4
+tmp=df.off$belief[df.off$trName=="chain4"]
+sort(table(tmp)/length(tmp))
+
+tmp=df.off$belief[df.off$trName=="chain4" &df.off$delayCond =="reliable"]
+sort(table(tmp)/length(tmp))
+
+tmp=df.off$belief[df.off$trName=="chain3" &df.off$delayCond =="unreliable"]
+table(tmp)/length(tmp)
+
+tmp=df.off %>% subset(trName=="chain3")
+table(tmp$delayCond,tmp$belief==14) %>% chisq.test()
+```
+
+```{r}
+#fork3
+tmp=df.off$belief[df.off$trName=="fork3"]
+sort(table(tmp))
+
+tmp=df.off$belief[df.off$trName=="fork3" &df.off$delayCond =="reliable"]
+sort(table(tmp)/length(tmp))
+
+tmp=df.off$belief[df.off$trName=="fork3" &df.off$delayCond =="unreliable"]
+sort(table(tmp)/length(tmp))
+
+#fork4
+tmp=df.off$belief[df.off$trName=="fork4"]
+sort(table(tmp))
+
+tmp=df.off$belief[df.off$trName=="fork4" &df.off$delayCond =="reliable"]
+sort(table(tmp)/length(tmp))
+
+tmp=df.off$belief[df.off$trName=="fork4" &df.off$delayCond =="unreliable"]
+sort(table(tmp)/length(tmp))
+
+```
+
+```{r}
+#loop/clock3
+tmp=df.off %>% subset (trName=="clock3",
+                       select=c("delayCond","n1_dir","n2_dir","n3_dir")) %>%
+  melt(id.vars="delayCond", value.name="bidirection",variable.name="link")%>%
+  mutate(bidirection=bidirection==3)
+
+chisq.test(table(tmp$delayCond,tmp$bidirection))
+
+tmp=df.off %>% subset (trName=="clock4",
+                       select=c("delayCond","n1_dir","n2_dir","n3_dir","n4_dir","n5_dir","n6_dir")) %>%
+  melt(id.vars="delayCond", value.name="bidirection",variable.name="link")%>%
+  mutate(bidirection=bidirection==3)
+
+chisq.test(table(tmp$delayCond,tmp$bidirection))
+
+```
+
+```{r}
+summarySE(df.off,measurevar = "acc_cycClass",groupvars = c("cyclic"),na.rm = T)
+x=summarySE(df.off,measurevar = "acc_cycClass",groupvars = c("cyclic","subID"),na.rm = T)
+t.test(acc_cycClass~cyclic,x,paired=T)
+```
+
+# IO accuracy
+```{r}
+df.off%>% summarySE(measurevar = "acc_nor",groupvars = "delayCond",na.rm = T) %>%  mutate_if(is.numeric, round,2)
+df.off%>% summarySE(measurevar = "acc_nor",groupvars = "cyclic",na.rm = T) %>%  mutate_if(is.numeric, round,2)
+df.off%>% summarySE(measurevar = "acc_nor",groupvars = "nodeNum",na.rm = T) %>%  mutate_if(is.numeric, round,2)
+```
+
+```{r}
+m=lmer(scale(acc_nor)~delayCond*cyclic*nodeNum+ (1+cyclic*nodeNum|subID)+(1+delayCond|trName),df.off)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+df.off$z_acc_nor=scale(df.off$acc_nor)
+m=lmer(scale(accLink)~z_acc_nor+(1+z_acc_nor|subID)+(1+z_acc_nor|trName),df.off)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+df.mo1=df.off[cyclic=="acyclic"]%>%mutate(accLink=scale(accLink),acc_nor=scale(acc_nor))
+df.mo2=df.off[cyclic=="cyclic"]%>%mutate(accLink=scale(accLink),acc_nor=scale(acc_nor))
+m=lmer(accLink~acc_nor+(1+acc_nor|subID)+(1+acc_nor|trName),df.mo1)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+
+m=lmer(accLink~acc_nor+(1+acc_nor|subID)+(1+acc_nor|trName),df.mo2)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+myFig<-function(g){
+  g+
+  geom_point()+
+  geom_line()+
+  geom_errorbar(aes(ymin=Accuracy-ci, ymax=Accuracy+ci),
+                width=.1)+
+  scale_linetype_manual(name="Learner", values=c("Participants"="solid","Ideal Observer"="dashed")) +
+  ylab("Accuracy")+
+  theme_bw()+
+  scale_y_continuous(limits = c(0.45,1.0))+
+  theme(text = element_text(size=15),
+        axis.text=element_text(colour="black"),
+        axis.line = element_line(color = 'black'),
+        panel.border = element_blank(),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none",
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA))
+}
+
+
+fig=df.off %>%
+  reshape2::melt(id.vars=setdiff(colnames(df.off),c("accLink","acc_nor")),value.name = "Accuracy", variable.name="Learner")%>%
+  summarySE(measurevar = "Accuracy",groupvars = c('cyclic',"Learner"),na.rm=T)%>%
+    mutate(Learner=factor(Learner,levels = c("accLink","acc_nor"),
+                          labels = c("Participants","Ideal Observer")),
+          cyclic=factor(cyclic,levels = c('acyclic',"cyclic"),labels = c("Acyclic","Cyclic")))%>%
+  ggplot(aes(x=cyclic,y=Accuracy,group=Learner,linetype=Learner))+
+  xlab("Cyclicity")
+
+fig%>%myFig()
+
+# ggsave(file="exp1_acc_cyc.pdf",width = 4,height = 3.5, bg="transparent")
+# ggsave(file="exp1_acc_legend.pdf",width = 9,height = 4)
+```
+
+
+```{r}
+#color for global event plot
+cols<-colorRampPalette(c("#518239","#F7F7F7","#B94136"), space="rgb")(10)
+
+df.off %>%
+  summarySE(measurevar = "eve_num",groupvars = c('cyclic'),na.rm=T)%>%
+  mutate(color=cols[round((eve_num*10))])
+
+# pdf('legend_eve.pdf', width=4, height=1)
+# par(mar=c(3,1,1,1))
+# image(matrix(seq(0,1,length.out=10), 10), col=cols, yaxt='n', xaxt='n')
+# axis(1, at = seq(0,1,length.out=4), labels = paste(seq(0.1, 1, length.out=4), sep=''))
+# dev.off()
+```
+
+# Event numbers
+```{r}
+df.off%>% summarySE(measurevar = "eve_num",groupvars = "cyclic",na.rm = T) %>%  mutate_if(is.numeric, round,2)
+```
+
+```{r}
+m=lmer(scale(eve_num)~delayCond*cyclic*nodeNum+(1+cyclic*nodeNum|subID)+(1+delayCond|trName),df.off)
+m%>% summary()
+
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+df.off$z_eve_num=scale(df.off$eve_num)
+m=lmer(scale(accLink)~z_eve_num + (1+z_eve_num|subID)+(1+z_eve_num|trName),df.off)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+df.mo1=df.off[cyclic=="acyclic"]%>%mutate(accLink=scale(accLink),eve_num=scale(eve_num))
+df.mo2=df.off[cyclic=="cyclic"]%>%mutate(accLink=scale(accLink),eve_num=scale(eve_num))
+m=lmer(accLink~eve_num+(1+eve_num|subID)+(1+eve_num|trName),df.mo1)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+
+m=lmer(accLink~eve_num+(1+eve_num|subID)+(1+eve_num|trName),df.mo2)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+df.sub=df.off %>% 
+    group_by(cyclic,delayCond,subID)%>%
+    dplyr::summarise(accLink=mean(accLink),acc_nor=mean(acc_nor,na.rm=T),eve_num=mean(eve_num))
+
+m=lm(scale(accLink)~scale(acc_nor),data=df.sub[df.sub$cyclic=="acyclic",])
+m%>%summary()
+confint(m)
+
+m=lm(scale(accLink)~scale(acc_nor),data=df.sub[df.sub$cyclic=="cyclic",])
+m%>%summary()
+confint(m)
+
+m=lm(scale(accLink)~scale(eve_num),data=df.sub[df.sub$cyclic=="acyclic",])
+m%>%summary()
+confint(m)
+
+m=lm(scale(accLink)~scale(eve_num),data=df.sub[df.sub$cyclic=="cyclic",])
+m%>%summary()
+confint(m)
+
+
+df.sub %>% 
+  subset(acc_nor>0.65)%>%
+  mutate(cyclic=factor(cyclic,levels=c("acyclic","cyclic"),labels = c("Acyclic","Cyclic")))%>%
+  ggplot(aes(x=exp(acc_nor+1),y=accLink,color=cyclic))+
+  geom_point(alpha=0.8,size=2.5,shape=1)+
+  geom_smooth(method="lm",formula='y ~ x',size=2,level=0.95)+
+  ylab("Human Accuracy")+
+   xlab("IO Accuracy (exp-transformed)")+
+    theme_bw()+
+    scale_color_manual("Cyclicity",values=c('#44792A','#FEAE00'))+
+    theme(text = element_text(size=15),
+          axis.text=element_text(colour="black"),
+          axis.line = element_line(color = 'black'),
+          panel.border = element_blank(),
+          panel.grid = element_blank())
+# ggsave(file="exp1_IO_predict.pdf",width = 6,height = 3.5, bg="transparent")
+
+df.sub %>% 
+  mutate(cyclic=factor(cyclic,levels=c("acyclic","cyclic"),labels = c("Acyclic","Cyclic")))%>%
+  ggplot(aes(x=log(eve_num),y=accLink,color=cyclic))+
+  geom_point(alpha=0.8,size=2.5,shape=1)+
+  geom_smooth(method="lm",formula='y ~ x',size=2,level=0.95)+
+  ylab("Accuracy")+
+   xlab("Event Density (log-transformed)")+
+    theme_bw()+
+    scale_color_manual("Cyclicity",values=c('#44792A','#FEAE00'))+
+    theme(text = element_text(size=15),
+          axis.text=element_text(colour="black"),
+          axis.line = element_line(color = 'black'),
+          panel.border = element_blank(),
+          panel.grid = element_blank())
+# ggsave(file="exp1_event_predict.pdf",width = 6,height = 3.5, bg="transparent")
+```
+
+```{r}
+df.sub2=df.off %>% 
+    group_by(delayCond,subID)%>%
+    dplyr::summarise(accLink=mean(accLink),acc_nor=mean(acc_nor,na.rm=T),eve_num=mean(eve_num))
+
+df.sub2%>% 
+  ggplot(aes(x=eve_num,y=acc_nor,fill=accLink,size=accLink))+#,
+  geom_point(shape=21,alpha=0.9)+
+  scale_fill_gradientn("Accuracy",limits = c(0.1, 1),breaks=c(0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9),
+                       colours=c("#a80d00","#F7F7F7","#226103"))+
+  scale_size("",range=c(6.5,2.5),limits = c(0.1, 1),breaks=c(0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9))+
+  theme_bw()+
+  xlab("Event Density")+
+  ylab("IO Accuracy")+
+  scale_y_continuous(limits = c(0.71,1),breaks = c(0.8,0.9,1.0))+
+  scale_x_continuous(limits = c(0.24,0.85),breaks = c(0.4,0.6,0.8))+
+  theme(text = element_text(size=15),
+      axis.text=element_text(colour="black"),
+      axis.line = element_line(color = 'black'),
+      panel.border = element_blank(),
+      panel.grid = element_blank(),
+      legend.position = "right")+
+  guides(fill= guide_legend(title=element_blank(),reverse = TRUE),
+         size = guide_legend(title=element_blank(),reverse = TRUE))
+
+ggsave(file="exp1_predict.pdf",width = 5.8,height = 3.5, bg="transparent")
+```
+
+# When to intervene
+```{r}
+df.off%>% summarySE(measurevar = "act_num",groupvars = "nodeNum",na.rm = T) %>%  mutate_if(is.numeric, round,2)
+df.off%>% summarySE(measurevar = "act_num",groupvars = "delayCond",na.rm = T) %>%  mutate_if(is.numeric, round,2)
+df.off%>% summarySE(measurevar = "act_num",groupvars = "cyclic",na.rm = T) %>%  mutate_if(is.numeric, round,2)
+```
+
+```{r}
+m=lmer(scale(act_num)~delayCond*cyclic*nodeNum+(1+nodeNum*cyclic|subID)+(1+delayCond|trName),df.off)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+df.off %>%
+   mutate(cyclic=factor(cyclic,levels = c('acyclic',"cyclic"),labels = c("Acyclic","Cyclic")))%>%
+  summarySE(measurevar = "act_num",groupvars = c('cyclic'),na.rm=T)%>%
+  ggplot(aes(x=cyclic,y=act_num))+
+  geom_bar(stat="identity",fill="white",color="black")+
+  geom_errorbar(aes(ymin=act_num-ci, ymax=act_num+ci),
+                width=.2)+
+  theme_bw()+
+  ylab("Activating Intervention")+
+  xlab("Cyclicity")+
+  scale_y_continuous(limits = c(0,6))+
+  theme(text = element_text(size=15),
+        axis.text=element_text(colour="black"),
+        axis.line = element_line(color = 'black'),
+        panel.border = element_blank(),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="exp1_int_cyc.pdf",width = 2.7,height = 4)
+
+df.off %>%
+   mutate(nodeNum=factor(nodeNum,levels = c('3',"4"),labels = c("Three-node","Four-node")))%>%
+  summarySE(measurevar = "act_num",groupvars = c('nodeNum'),na.rm=T)%>%
+  ggplot(aes(x=nodeNum,y=act_num))+
+  geom_bar(stat="identity",fill="white",color="black")+
+  geom_errorbar(aes(ymin=act_num-ci, ymax=act_num+ci),
+                width=.2)+
+  theme_bw()+
+  ylab("Activating Intervention")+
+  xlab("Structure Nodes")+
+  scale_y_continuous(limits = c(0,6))+
+  theme(text = element_text(size=15),
+        axis.text=element_text(colour="black"),
+        axis.line = element_line(color = 'black'),
+        panel.border = element_blank(),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none")
+
+# ggsave(file="exp1_int_nod.pdf",width = 2.7,height = 4)
+```
+
+
+
+```{r}
+summarySE(df.act.agg,measurevar = "gap",groupvars = "cyclic",na.rm = T)
+summarySE(df.act.agg,measurevar = "gap",groupvars = "delayCond",na.rm = T)
+summarySE(df.act.agg,measurevar = "gap",groupvars = "nodeNum",na.rm = T)
+```
+
+```{r}
+m=lmer(scale(gap)~delayCond*cyclic*nodeNum+(1+nodeNum*cyclic|subID)+(1+delayCond|trName),
+       control = lmerControl(optimizer="bobyqa"),df.act)
+m%>% summary()
+confint.merMod(m,method = "Wald")
+```
+
+```{r}
+df.act.agg.fig=df.act.agg%>%  mutate(interval=gap/1000) %>%
+  mutate(cyclic=factor(cyclic,levels = c("unconnected","acyclic","cyclic"),labels = c("Unlinked","Acyclic","Cyclic"))
+  )
+
+df.act.ind=df.act.agg.fig%>%
+    summarySE(measurevar = "interval", groupvars = c("subID","cyclic"),na.rm=T)
+```
+
+
+```{r}
+df.act.ind%>%
+  summarySE(measurevar = "interval",groupvars = c('cyclic'),na.rm=T)%>%
+  ggplot(aes(x=cyclic,y=interval))+
+  geom_bar(stat = "identity",color="black",fill="white")+
+  geom_errorbar(aes(ymin=interval-ci, ymax=interval+ci),
+                width=.2)+
+  xlab("Cyclicity")+
+  ylab("Interval (s)")+
+  scale_y_continuous(limits = c(0,11),breaks = c(0,3,6,9))+
+  theme_bw()+
+  theme(text = element_text(size=15),
+        axis.line = element_line(color = 'black'),
+        panel.border = element_blank(),
+        axis.text=element_text(colour="black"),
+        plot.background = element_blank(),
+        strip.background =element_rect(fill="white",color = "white"),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = 'none')
+ggsave(file="exp1_int_timing.pdf",width = 2.7,height = 4)
+# ggsave(file="exp1_timing.pdf",width = 5,height = 5.5)
+```
+
+# Where to intervene
+```{r}
+df=df.where %>% as.data.frame()%>%
+  merge(expand.grid(subID=df.dmg$subID,trName=str_name,actNum=c(1:6)),by=c("subID","actNum","trName"),all= T)%>%
+  mutate(newNode=ifelse(is.na(newNode),F,newNode))
+
+for (k in which(is.na(df$nodeNum))){
+  df$nodeNum[k]=df$nodeNum[which(df$trName==df$trName[k])[1]]
+}
+
+df2=data.frame()
+df$newIOprob=NA
+for (k in 1:nrow(df)){
+  if (is.na(df$obj[k])){
+     df$newIOprob[k]=FALSE
+     df2=rbind(df2,df[rep(k,10),])
+     next
+  }
+  
+  old=df %>% subset(uni_trial==df$uni_trial[k] & time< df$time[k])
+  if (nrow(old)==0){
+    df$newIOprob[k]=TRUE
+    df2=rbind(df2,df[k,])
+    next
+  }
+  
+  tmp=IOchoice %>% subset(uni_trial==df$uni_trial[k] & wd== df$wd[k])
+  tmp2=mdall %>% subset(uni_label==paste(df$uni_trial[k],df$wd[k],sep="_") & choice=="N")
+  if (nrow(tmp)==0){next} #escape the double intervention
+  tmp$eig_gr=pmax(tmp$eig_gr-tmp2$eig_gr,0)
+  if (sum(tmp$eig_gr)==0){tmp$eig_gr=rep(1,length(tmp$eig_gr))}
+  tmp3=df[rep(k,10),] %>% mutate(newIOprob=!(sample(tmp$choice,10,prob=tmp$eig_gr,replace = T)%in%old$obj))
+  df2=rbind(df2,tmp3)
+    # df.where$newIOprob[k]=!(sample(tmp$choice[which(tmp$eig_gr==max(tmp$eig_gr))],1)%in%old$obj)
+}
+
+x1=df%>%summarySE(measurevar = "newNode",groupvars = c("actNum","trName","nodeNum"),na.rm=T)
+x2=df2%>%summarySE(measurevar = "newIOprob",groupvars = c("actNum","nodeNum"),na.rm=T)
+x3=df.where %>% group_by(actNum,nodeNum) %>% 
+  dplyr::summarise(n=n(),p=n/(74*6)) 
+
+```
+
+```{r}
+x1 %>%
+  summarySE(measurevar = "newNode",groupvars = c("trName","nodeNum","actNum"),na.rm=T)%>%
+  summarySE(measurevar = "newNode",groupvars = c("nodeNum","actNum"),na.rm=T)%>%
+  mutate(rdline=c(c(1,2/3,4/9,8/27,16/81,32/243)* x3$p[x3$nodeNum==3],
+                  c(1,3/4,9/16,27/64,81/256,243/1024))*x3$p[x3$nodeNum==4],
+         ioline=c(x2$newIOprob[x2$nodeNum==3],
+                  x2$newIOprob[x2$nodeNum==4])
+         )%>%
+  ggplot(aes(x=actNum,y=newNode))+
+  # facet_grid(rows = vars(nodeNum),cols=vars(delayCond))+
+  facet_wrap(~nodeNum,labeller = as_labeller(c("3"="Three-node Structure","4"="Four-node Structure")))+
+  geom_bar(stat="identity",fill="gray",position=position_dodge(.9))+#"#D5D5D5"
+  geom_errorbar(aes(ymin = newNode-ci,ymax=newNode+ci),width=0,size=0.8,position=position_dodge(.9))+
+  geom_errorbar(aes(ymin = rdline,ymax =rdline),width=1,size=0.8,position=position_dodge(.9),color="#FEAE00")+
+  geom_errorbar(aes(ymin = ioline,ymax =ioline),width=1,size=0.8,position=position_dodge(.9),color="#44792A")+
+  geom_bar(data=x3,aes(x=actNum,y=p),stat="identity",color="black",fill="transparent",position=position_dodge(.9))+#"#D5D5D5"
+  theme_bw()+
+  xlab(expression(paste("The ", X^th," Activating Intervention")))+
+  ylab("Intervening on a New Node")+
+  scale_x_continuous(breaks = c(1:6))+
+  geom_vline(data=filter(df.where, nodeNum==3), aes(xintercept=3.5), colour="gray40",linetype="dashed") + 
+  geom_vline(data=filter(df.where, nodeNum==4), aes(xintercept=4.5), colour="gray40",linetype="dashed") + 
+  scale_shape_manual(values=c(3,1))+
+  theme(text = element_text(size=14),
+        axis.text=element_text(colour="black"),
+        axis.line = element_line(color = 'black'),
+        panel.border = element_blank(),
+        strip.text.x = element_text(size = 12),
+        panel.grid = element_blank(),
+        strip.background =element_rect(fill="white",color="white"),legend.position = "none",
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA))
+
+# ggsave(file="exp1_new.pdf",width = 7,height = 3.5) #width = 7
+```
+
+
+<!-- #error pattterns and interventions -->
+<!-- ```{r} -->
+<!-- #chain3 -->
+<!-- lis= df.off %>% subset(trName=='chain3') %>% subset(belief==11 | belief==14) %>%  -->
+<!--   mutate(ans=ifelse(belief==11,"chain","fully")) -->
+
+<!-- x=df.root %>% subset(trName=="chain3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    midMean=mean(obj=="B"),midSum=sum(obj=="B"), -->
+<!--                    childMean=mean(obj=="C"),childSum=sum(obj=="C")) -->
+
+<!-- t.test(n~ans,y) -->
+<!-- t.test(rootSum~ans,y) -->
+<!-- t.test(midSum~ans,y) -->
+<!-- t.test(childSum~ans,y) -->
+<!-- # t.test(rootMean~ans,y) -->
+<!-- # t.test(midMean~ans,y) -->
+<!-- # t.test(childMean~ans,y) -->
+
+<!-- # z=df.off %>% subset(trName!='chain3' & subID %in% lis$subID) %>%  -->
+<!-- #    merge(select(lis,subID,ans),by="subID") %>%  -->
+<!-- #   summarySE(measurevar = "accLink",groupvars = c("subID","ans")) -->
+<!-- #  -->
+<!-- # t.test(accLink~ans,z) -->
+
+<!-- z=df.act.agg %>% subset(trName=="chain3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- t.test(gap~ans,z) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- #chain4 -->
+<!-- lis= df.off %>% subset(trName=='chain4') %>%  -->
+<!--   subset(belief %in% c(218,284,312,221)) %>%  -->
+<!--   mutate(ans=ifelse(belief==218,"chain","fully")) -->
+
+<!-- x=df.root %>% subset(trName=="chain4" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    midMean=mean(obj=="B"),midSum=sum(obj=="B"), -->
+<!--                    midMean2=mean(obj=="C"),midSum2=sum(obj=="C"), -->
+<!--                    childMean=mean(obj=="D"),childSum=sum(obj=="D")) -->
+
+<!-- t.test(n~ans,y) -->
+<!-- t.test(rootSum~ans,y) -->
+<!-- t.test(midSum~ans,y) -->
+<!-- t.test(midSum2~ans,y) -->
+<!-- t.test(childSum~ans,y) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- #fork3 -->
+<!-- lis= df.off %>% subset(trName=='fork3') %>%  -->
+<!--   subset(belief %in% c(5,11,21)) %>%  -->
+<!--   mutate(ans=ifelse(belief==5,"fork","chain")) -->
+
+<!-- table(lis$delayCond,lis$ans) -->
+
+<!-- x=df.root %>% subset(trName=="fork3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    midMean=mean(obj=="B"),midSum=sum(obj=="B"), -->
+<!--                    childMean=mean(obj=="C"),childSum=sum(obj=="C")) -->
+
+<!-- t.test(n~ans,y) -->
+<!-- t.test(rootSum~ans,y) -->
+<!-- t.test(midSum~ans,y) -->
+<!-- t.test(childSum~ans,y) -->
+<!-- ``` -->
+

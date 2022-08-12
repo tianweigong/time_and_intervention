@@ -1,0 +1,212 @@
+---
+title: "experiment1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(Rmisc)
+library(reshape2)
+library(plyr)
+library(lmerTest)
+library(knitr)
+library(data.table)
+library(effsize)
+library(ExactMultinom)
+library(ggrepel)
+load("DBN.Rdata")
+```
+
+```{r}
+load("exp1_forComb.Rda")
+df.act.agg1=df.act.agg
+df.eve1=df.eve
+df.off1=df.off
+df.root1=df.root
+
+load("exp2_forComb.Rda")
+df.act.agg2=df.act.agg
+df.eve2=df.eve
+df.off2=df.off
+df.root2=df.root
+```
+
+comparing the acc between Exp1 and 2
+```{r}
+str_name=str_name=c('colli3','chain3','fork3','colli4','chain4','fork4',
+           'loop_in3','clock3','loop_out3','loop_inout4','clock4','clock_out4')
+lapply(as.list(str_name),function (x){t.test(df.off1$accLink[df.off1$trName==x],df.off2$accLink[df.off2$trName==x],var.equal=T)})
+```
+
+
+
+#cyclic--loop
+```{r}
+str="clock3" #loop_in
+df1=df.off1 %>% subset(trName==str) %>% mutate(exp="exp1") %>%
+  select(subID,delayCond,accLink,exp)
+df2=df.off2 %>% subset(trName==str) %>% mutate(exp="exp2") %>%
+  select(subID,delayCond,accLink,exp)
+df=rbind(df1,df2)
+
+aov(accLink~delayCond*exp,df) %>% summary()
+```
+
+```{r}
+df=df.off2%>% subset(trName=="clock3")
+
+table(df$blc_yn_reset)
+t.test(accLink~blc_yn_reset,df,var.equal = T)
+cohen.d(accLink~blc_yn_reset,df,var.equal = T)
+
+table(df$blc_yn_ctrl)
+t.test(accLink~blc_yn_ctrl,df,var.equal = T)
+cohen.d(accLink~blc_yn_ctrl,df,var.equal = T)
+```
+
+```{r}
+df=df.off2%>% subset(trName=="clock4")
+
+table(df$blc_yn_reset)
+t.test(accLink~blc_yn_reset,df,var.equal = T)
+cohen.d(accLink~blc_yn_reset,df,var.equal = T)
+
+table(df$blc_yn_ctrl)
+t.test(accLink~blc_yn_ctrl,df,var.equal = T)
+cohen.d(accLink~blc_yn_ctrl,df,var.equal = T)
+
+```
+
+<!-- ```{r} -->
+<!-- #chain3 -->
+<!-- lis= df.off1 %>% subset(trName=='chain3') %>% subset(belief==11 | belief==14) %>%  -->
+<!--   mutate(ans=ifelse(belief==11,"chain","fully")) -->
+
+<!-- x=df.root1 %>% subset(trName=="chain3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    midMean=mean(obj=="B"),midSum=sum(obj=="B"), -->
+<!--                    childMean=mean(obj=="C"),childSum=sum(obj=="C")) -->
+
+<!-- t.test(midSum~ans,y,var.equal =T) -->
+<!-- cohen.d(midSum~ans,y,var.equal =T) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- #chain4 -->
+<!-- lis= df.off1 %>% subset(trName=='chain4') %>%  -->
+<!--   subset(belief %in% c(218,284,312,221)) %>%  -->
+<!--   mutate(ans=ifelse(belief==218,"chain","fully")) -->
+
+<!-- x=df.root1 %>% subset(trName=="chain4" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    midMean=mean(obj %in% c("B","C")),midSum=sum(obj %in% c("B","C")), -->
+<!--                    childMean=mean(obj=="D"),childSum=sum(obj=="D")) -->
+
+<!-- t.test(n~ans,y,var.equal =T) -->
+<!-- t.test(rootSum~ans,y,var.equal =T) -->
+<!-- t.test(midSum~ans,y,var.equal =T) -->
+<!-- cohen.d(midSum~ans,y,var.equal =T) -->
+<!-- t.test(childSum~ans,y,var.equal =T) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- #fork3 -->
+<!-- lis= df.off1 %>% subset(trName=='fork3') %>%  -->
+<!--   subset(belief %in% c(5,11,21)) %>%  -->
+<!--   mutate(ans=ifelse(belief==5,"fork","chain")) -->
+
+<!-- table(lis$delayCond,lis$ans) -->
+
+<!-- x=df.root1 %>% subset(trName=="fork3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    childMean=mean(obj %in% c("B","C")), -->
+<!--                    childSum=sum(obj%in% c("B","C"))) -->
+
+<!-- t.test(n~ans,y,var.equal=T) -->
+<!-- t.test(rootSum~ans,y,var.equal=T) -->
+<!-- cohen.d(rootSum~ans,y,var.equal =T) -->
+<!-- t.test(childSum~ans,y,var.equal=T) -->
+
+<!-- #fork3 -- exp2 -->
+<!-- lis= df.off2 %>% subset(trName=='fork3') %>%  -->
+<!--   subset(belief %in% c(12,6,16)) %>%  -->
+<!--   mutate(ans=ifelse(belief==12,"fork","chain")) -->
+<!-- #fully: 17,15 -->
+
+<!-- x=df.root2 %>% subset(trName=="fork3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    childMean=mean(obj %in% c("A","C")), -->
+<!--                    childSum=sum(obj%in% c("A","C"))) -->
+
+<!-- t.test(n~ans,y,var.equal = T) -->
+<!-- t.test(rootSum~ans,y,var.equal = T) -->
+<!-- t.test(childSum~ans,y,var.equal = T) -->
+<!-- cohen.d(childSum~ans,y,var.equal =T) -->
+
+<!-- z=df.blc %>% subset(trName=="fork3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- #fork3-- exp2 --fully -->
+<!-- lis= df.off2 %>% subset(trName=='fork3') %>%  -->
+<!--   subset(belief %in% c(12,17,15)) %>%  -->
+<!--   mutate(ans=ifelse(belief==12,"fork","fully")) -->
+<!-- #fully: 17,15 -->
+
+<!-- x=df.root2 %>% subset(trName=="fork3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    childMean=mean(obj %in% c("A","C")), -->
+<!--                    childSum=sum(obj%in% c("A","C"))) -->
+
+<!-- t.test(n~ans,y) -->
+<!-- t.test(rootSum~ans,y) -->
+<!-- t.test(childSum~ans,y) -->
+
+<!-- # z=df.blc %>% subset(trName=="fork3" & subID %in% lis$subID) %>%  -->
+<!-- #   merge(select(lis,subID,ans),by="subID") -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- #fully3 -> chain3 -->
+<!-- lis= df.off2 %>% subset(trName=='fully3')%>%  -->
+<!--   subset(belief %in% c(17,16)) %>%  -->
+<!--   mutate(ans=ifelse(belief==17,"fully","chain")) -->
+<!-- #31 A->B<->C -->
+
+<!-- x=df.root2 %>% subset(trName=="fully3" & subID %in% lis$subID) %>%  -->
+<!--   merge(select(lis,subID,ans),by="subID") -->
+
+<!-- y=x %>% group_by(ans,subID) %>%  -->
+<!--   dplyr::summarise(n=n(),rootMean=mean(root),rootSum=sum(root), -->
+<!--                    midMean=mean(obj=="C"),midSum=sum(obj=="C"), -->
+<!--                    childMean=mean(obj=="A"),childSum=sum(obj=="A")) -->
+
+<!-- t.test(n~ans,y,var.equal = T) -->
+<!-- t.test(rootSum~ans,y,var.equal = T) -->
+<!-- cohen.d(rootSum~ans,y,var.equal =T) -->
+<!-- t.test(midSum~ans,y,var.equal = T) -->
+<!-- t.test(childSum~ans,y,var.equal = T) -->
+<!-- ``` -->
+

@@ -1,0 +1,189 @@
+---
+title: "sim_random"
+output: html_document
+---
+
+for the simulation results in Results
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(tidyr)
+library(dplyr)
+library(Rmisc)
+library(reshape2)
+library(plyr)
+library(parallel)
+source("per_setting.R")
+source("fun_sim_gen.R")
+source("fun_infer_nor.R")
+```
+
+```{r load variables}
+str_name=c('colli3','chain3','fork3','colli4','chain4','fork4',
+           'loop_in3','clock3','loop_out3','loop_inout4','clock4','clock_out4')
+
+str_node=c(3,3,3,4,4,4,3,3,3,4,4,4)
+non_link=c(1,1,1,3,3,3,1,0,1,3,2,2)
+str_belief=c(13,11,5,299,218,30,
+             50,35,33,1385,1449,1370)
+str_code=c('colli3'=4,'chain3'=7,'fork3'=6,'colli4'=8,'chain4'=84,'fork4'=74,
+           'loop_in3'=15,'clock3'=39,'loop_out3'=23,'loop_inout4'=276,'clock4'=1620,'clock_out4'=1108)
+
+load("DBN.Rdata")
+```
+
+# simulation (skip it. there are result files)
+```{r}
+MyEdgeAcc<-function(mysti,post,edg_all,edg_tru){
+  #for edg acc
+  acc_edg=0
+  edg_each=rep(NA,6)
+  edg_tru=edg_all[[mysti]]
+  for (k in 1:length(edg_all)){
+    acc_edg=acc_edg+post[k]*sum(edg_all[[k]]==edg_tru)/length(edg_tru)
+    for (e in 1:length(edg_tru)){
+      edg_each[e]=c(post[k]*sum(edg_all[[k]][e]==edg_tru[e]),edg_each[e]) %>% sum(na.rm = T)
+    }
+  }
+  return(list(round(acc_edg,4),round(edg_each,4)))
+}
+```
+
+(skip it)
+```{r}
+sim_num=70
+
+myRun <- function(sim){
+  dt.sim=data.frame()
+  lis.sim=list()
+  act_lis3=sample(c("A","B","C"),6,replace = T)
+  act_lis4=sample(c("A","B","C","D"),6,replace = T)
+
+  for (k in c("reliable","unreliable")){
+    if (k=="reliable"){k_g=k_g_r;r_g=r_g_r}else{k_g=k_g_i;r_g=r_g_i}
+    p_trim=c(qgamma(10^-10,k_g,r_g),qgamma(1-10^-10,k_g,r_g))
+    for (s in str_name){
+      dt=data.frame(sim=sim,trName=s,delayCond=k,ints=c(1:6),
+                    accLink=NA,eve_num=NA,trim=NA,skip=NA)
+      
+      if (which(str_name==s) %in% c(4:6,10:12)){
+        act_lis=act_lis4
+        lis.nod=str_all4[[str_code[s]]]
+        str_all=str_all4
+        edg_all=edg_all4
+      }else{
+        act_lis=act_lis3
+        lis.nod=str_all3[[str_code[s]]]
+        str_all=str_all3
+        edg_all=edg_all3
+      }
+      
+       sqc=as.data.frame(matrix(NA,ncol = 5, nrow=0)) %>%
+          setNames(c("obj","time","act","blc","all_idx"))
+       
+      for (m in 1:6){
+        sqc=MySqcGen(act_lis[m],(m-1)*7.5*1000,c(),sqc,lis.nod,k_g,r_g,w_pow,trial_end,p_trim)
+        sqc=sqc%>% subset(time<trial_end)
+        sqc=sqc[order(sqc$time),]
+        
+        
+        dt$eve_num[m]=nrow(sqc)
+        
+        if (m!=1 && dt$accLink[m-1]>0.99){
+          dt$accLink[m]=dt$accLink[m-1]
+          dt$skip[m]=1
+        }else if (m!=1 && dt$trim>0){
+          dt$accLink[m]=dt$accLink[m-1]
+          dt$trim[m]=dt$trim[m-1]
+          dt$skip[m]=1
+        }else{
+          re=MyNorSummary(sqc,k_g,r_g,str_all,p_trim,trial_end,0)
+          mysti=str_code[dt$trName[1]]
+          edg_tru=edg_all[[mysti]]
+          re2=MyEdgeAcc(mysti,re[[2]],edg_all,edg_tru)
+          dt$accLink[m]=re2[[1]]
+          dt$trim[m]=re[[3]]
+        }
+        
+    lis.sim[[paste(dt$trName[m],dt$delayCond[m],dt$ints[m],sep="_")]]=list("sqc"=sqc,"accLink"=re2,"posterior"=re)
+        
+      }
+      dt.sim=rbind(dt.sim,dt)
+    }
+  }
+    save(dt.sim,lis.sim,file=paste("sim_random/",sim,".Rda",sep=""))
+}
+# 
+wholelist=as.list(c(1:sim_num))
+mclapply(wholelist, myRun,mc.cores = 10)
+```
+
+```{r}
+library(ggplot2)
+
+filelist= list.files("sim_random")
+dt.all=data.frame()
+for (k in 1: length(filelist)){
+  load(paste("sim_random/",filelist[k],sep=""))
+  dt.sim$sim=filelist[k]
+  dt.all=rbind(dt.all,dt.sim)
+}
+dt.all$trLabel=paste(dt.all$sim,dt.all$trName,sep="_")
+dt.all$rem=NA
+dt.all$rem[intersect(which(dt.all$trim>0),which(dt.all$accLink<0.99))]=1
+
+dt.all1=dt.all %>% subset(! trLabel %in% unique(dt.all$trLabel[dt.all$rem==1])) %>%
+  merge(data.frame(trName=str_name,cyclic=factor(rep(c("Acyclic","Cyclic"),each=6))),by="trName") %>% 
+  merge(data.frame(trName=str_name,nodeNum=factor(rep(c(3,3,3,4,4,4),2))),by="trName")
+
+dt.all2=dt.all %>%
+  merge(data.frame(trName=str_name,cyclic=factor(rep(c("Acyclic","Cyclic"),each=6))),by="trName") %>% 
+  merge(data.frame(trName=str_name,nodeNum=factor(rep(c(3,3,3,4,4,4),2))),by="trName")
+
+
+# dt.all=dt.all %>% subset(trim<1 | accLink>0.99) %>% 
+#   merge(data.frame(trName=str_name,cyclic=factor(rep(c("Acyclic","Cyclic"),each=6))),by="trName")
+```
+
+
+```{r}
+summarySE(dt.all1, measurevar = "accLink",groupvars = c("nodeNum","ints","cyclic"))%>% 
+  mutate(nodeNum=factor(nodeNum,levels = c(3,4),labels = c("Three-node","Four-node"))
+        )%>%
+  ggplot(aes(x=ints,y=accLink,color=cyclic,linetype=nodeNum))+
+  geom_point(size=1.5)+
+  geom_line()+
+  scale_x_continuous(breaks = c(1:6))+
+  scale_color_manual("Cyclicity",values = c("black","gray65"))+
+  scale_linetype_manual("Structure Nodes",values =c("solid","dashed"))+
+  theme_bw()+
+  ylab("IO Accuracy")+
+   xlab("Number of Simulated Interventions")+
+  theme_bw()+
+  theme(text = element_text(size=13),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank())
+  
+# ggsave(file="exp_sim_acc.pdf",width = 5,height = 2.5)
+
+summarySE(dt.all2, measurevar = "eve_num",groupvars = c("nodeNum","ints","cyclic"))%>% 
+    mutate(nodeNum=factor(nodeNum,levels = c(3,4),labels = c("Three-node","Four-node"))
+        )%>%
+  ggplot(aes(x=ints,y=eve_num/45,color=cyclic,linetype=nodeNum))+
+  geom_point(size=1.5)+
+  geom_line()+
+  scale_x_continuous(breaks = c(1:6))+
+    scale_color_manual("Cyclicity",values = c("black","gray65"))+
+  scale_linetype_manual("Structure Nodes",values =c("solid","dashed"))+
+  theme_bw()+
+  ylab("Event Density")+
+   xlab("Number of Simulated Interventions")+
+  theme_bw()+
+  theme(text = element_text(size=13),
+        axis.text=element_text(colour="black"),
+        panel.grid = element_blank())
+
+# ggsave(file="exp_sim_eve.pdf",width = 5,height = 2.5)
+```
