@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<script src="static/lib/jquery.min.js"></script>
+	<script src="static/js/param.js"></script>
+	<script src="static/js/main.js" charset="utf-8"></script>
+	<link href="static/lib/bootstrap.min.css" rel="stylesheet"/>
+	<link rel="stylesheet" href="static/css/styles.css">
+	<title>Active Causal Learning Demo</title>
+</head>
+<body oncontextmenu="return false;"><!-- oncontextmenu="return false" -->
+	<div id="pg_exp" class="container">
+		<h3>Active Causal Learning Demo</h3>
+		<div style="border:1px solid #D9D9D9;margin-top:30px;margin-right:auto;margin-left:auto;width:500px;height:430px;clear: both;">
+			<!--bonus -->
+			<div style="width:155px;height: 30px;float:left;text-align: center">
+				<div style="font-size: 16px;line-height: 1.5;">Activating Chances</div>
+				<div id="bonus" style="width:138px;height:28px;border:2px dashed #363636;text-align:left;margin-right:auto;margin-left:auto;font-size: 16px;line-height: 1.5;"><img class='coins' src='static/img/bonus.png'><img class='coins' src='static/img/bonus.png'><img class='coins' src='static/img/bonus.png'><img class='coins' src='static/img/bonus.png'><img class='coins' src='static/img/bonus.png'><img class='coins' src='static/img/bonus.png'></div>
+			</div>
+			<!--blocking -->
+			<div style="width:215px;height: 30px;float:left;text-align: center">
+				<div style="font-size: 16px;line-height: 1.5;">Blocking Chances</div>
+				<div style="width:80px;height:28px;border:2px dashed #363636;text-align:center;margin-right:auto;margin-left:auto;font-size: 16px;line-height: 1.5;">Unlimited</div>
+			</div>
+
+			<!--time -->
+			<div style="width:125px;height: 30px;float:right;text-align: center">
+				<div style="font-size: 16px;line-height: 1.5;">Time Remaining</div>
+				<div id="clock_container" style="position:relative;width:50px;height:30px;margin-left:auto;margin-right:auto;font-size: 16px;line-height: 1.5;">45 s
+				</div>
+			</div>
+			<!--game -->
+			<div style="clear: both;"></div>
+			<div id="pg_game" align="center" class="noselect" style="margin-top:60px;margin-bottom:30px;">
+				<div class="node" id="node_D" onclick="click_node(0)" oncontextmenu="rightclick_node(0)"></div>
+				<div class="node" id="node_E" onclick="click_node(1)" oncontextmenu="rightclick_node(1)"></div>
+				<div class="node" id="node_F" onclick="click_node(2)" oncontextmenu="rightclick_node(2)"></div>
+				<div class="node" id="node_G" onclick="click_node(3)" oncontextmenu="rightclick_node(3)"></div>
+				<div class="fr_edge" id="fr_edge_DE" onclick="click_edge(0)">
+					<div class="hint" id="hint_DE"></div>
+					<div class="edge" id="edge_DE" style="visibility: hidden;"></div>
+					<div class="arrow ar1" id="arrow_DE" style="visibility: hidden;"></div>
+					<div class="arrow ar2" id="arrow_ED" style="visibility: hidden;"></div>
+					<div class="edge_fb" id="edge_DE_fb" style="display: none;"></div>
+					<div class="arrow_fb ar1_fb" id="arrow_DE_fb" style="display: none;"></div>
+					<div class="arrow_fb ar2_fb" id="arrow_ED_fb" style="display: none;"></div>
+				</div>
+				<div class="fr_edge" id="fr_edge_EF" onclick="click_edge(1)">
+					<div class="hint" id="hint_EF"></div>
+					<div class="edge" id="edge_EF" style="visibility: hidden;"></div>
+					<div class="arrow ar1" id="arrow_EF" style="visibility: hidden;"></div>
+					<div class="arrow ar2" id="arrow_FE" style="visibility: hidden;"></div>
+					<div class="edge_fb" id="edge_EF_fb" style="display: none;"></div>
+					<div class="arrow_fb ar1_fb" id="arrow_EF_fb" style="display: none;"></div>
+					<div class="arrow_fb ar2_fb" id="arrow_FE_fb" style="display: none;"></div>
+				</div>
+				<div class="fr_edge" id="fr_edge_DF" onclick="click_edge(2)">
+					<div class="hint" id="hint_DF"></div>
+					<div class="edge" id="edge_DF" style="visibility: hidden;"></div>
+					<div class="arrow ar1" id="arrow_DF" style="visibility: hidden;"></div>
+					<div class="arrow ar2" id="arrow_FD" style="visibility: hidden;"></div>
+					<div class="edge_fb" id="edge_DF_fb" style="display: none;"></div>
+					<div class="arrow_fb ar1_fb" id="arrow_DF_fb" style="display: none;"></div>
+					<div class="arrow_fb ar2_fb" id="arrow_FD_fb" style="display: none;"></div>
+				</div>
+				<div class="fr_edge" id="fr_edge_DG" onclick="click_edge(3)">
+					<div class="hint" id="hint_DG"></div>
+					<div class="edge" id="edge_DG" style="visibility: hidden;"></div>
+					<div class="arrow ar1" id="arrow_DG" style="visibility: hidden;"></div>
+					<div class="arrow ar2" id="arrow_GD" style="visibility: hidden;"></div>
+					<div class="edge_fb" id="edge_DG_fb" style="display: none;"></div>
+					<div class="arrow_fb ar1_fb" id="arrow_DG_fb" style="display: none;"></div>
+					<div class="arrow_fb ar2_fb" id="arrow_GD_fb" style="display: none;"></div>
+				</div>
+				<div class="fr_edge" id="fr_edge_EG" onclick="click_edge(4)">
+					<div class="hint" id="hint_EG"></div>
+					<div class="edge" id="edge_EG" style="visibility: hidden;"></div>
+					<div class="arrow ar1" id="arrow_EG" style="visibility: hidden;"></div>
+					<div class="arrow ar2" id="arrow_GE" style="visibility: hidden;"></div>
+					<div class="edge_fb" id="edge_EG_fb" style="display: none;"></div>
+					<div class="arrow_fb ar1_fb" id="arrow_EG_fb" style="display: none;"></div>
+					<div class="arrow_fb ar2_fb" id="arrow_GE_fb" style="display: none;"></div>
+				</div>
+				<div class="fr_edge" id="fr_edge_FG" onclick="click_edge(5)">
+					<div class="hint" id="hint_FG"></div>
+					<div class="edge" id="edge_FG" style="visibility: hidden;"></div>
+					<div class="arrow ar1" id="arrow_FG" style="visibility: hidden;"></div>
+					<div class="arrow ar2" id="arrow_GF" style="visibility: hidden;"></div>
+					<div class="edge_fb" id="edge_FG_fb" style="display: none;"></div>
+					<div class="arrow_fb ar1_fb" id="arrow_FG_fb" style="display: none;"></div>
+					<div class="arrow_fb ar2_fb" id="arrow_GF_fb" style="display: none;"></div>
+				</div>
+				<button id="btn_confirm" class="btn-primary btn-lg" style="width:75px;height: 45px;font-size:14px;padding:0;top:60%;position:relative;display:none;" onclick="data_record(1)" ><b>Confirm</b></button>
+			</div><br>
+		</div>
+
+		<div id="exp_ins" align="center">&nbsp</div><br>
+
+		<div  style="margin-top:2px;margin-right:auto;margin-left:auto;width:500px;clear: both;">
+			<form>
+				Delay reliability: 
+				<select name="Delay" id="Delay" required style="margin-bottom:10px;" onchange="mychoice(0)">
+	            	<option value="Reliable">Reliable</option>
+	            	<option value="Unreliable">Unreliable</option>
+		        </select>
+		        <br>
+		        Cyclicity: 
+		        <select name="Cyclicity" id="Cyclicity" required style="margin-bottom:10px;" onchange="mychoice(1)">
+	            	<option value="Acylic">Acylic</option>
+	            	<option value="Cyclic">Cyclic</option>
+	            	<option value="Unlinked">Unlinked</option>
+		        </select>
+		        <br>
+		        Number of nodes: 
+		        <select name="Nodes" id="Nodes" required style="margin-bottom:10px;" onchange="mychoice(1)">
+	            	<option value="Three">Three-node</option>
+	            	<option value="Four">Four-node</option>
+		        </select>
+		        <br>
+		        Structure: 
+		        <select name="Structure" id="Structure" required onchange="mychoice(0)">
+		        	<option id="Select" value="Select">--Select--</option>
+	            	<option id="Acyclic1" value="Acyclic1">Acylic1(collider)</option>
+	            	<option id="Acyclic2" value="Acyclic2">Acylic2(chain)</option>
+	            	<option id="Acyclic3" value="Acyclic3">Acyclic3(fork)</option>
+	            	<option id="Acyclic4" value="Acyclic4" style="display: none;">Acyclic4(collider)</option>
+	            	<option id="Acyclic5" value="Acyclic5" style="display: none;">Acyclic5(chain)</option>
+	            	<option id="Acyclic6" value="Acyclic6" style="display: none;">Acyclic6(fork)</option>
+	            	<option id="Acyclic7" value="Acyclic7">Acyclic7(fully)</option>
+	            	<option id="Acyclic8" value="Acyclic8" style="display: none;">Acyclic8(fully)</option>
+	            	<option id="Cyclic1" value="Cyclic1" style="display: none;">Cyclic1(clock)</option>
+	            	<option id="Cyclic2" value="Cyclic2" style="display: none;">Cyclic2(loop-in)</option>
+	            	<option id="Cyclic3" value="Cyclic3" style="display: none;">Cyclic3(loop-out)</option>
+	            	<option id="Cyclic4" value="Cyclic4" style="display: none;">Cyclic4(clock)</option>
+	            	<option id="Cyclic5" value="Cyclic5" style="display: none;">Cyclic5(loop-in-out)</option>
+	            	<option id="Cyclic6" value="Cyclic6" style="display: none;">Cyclic6(clock-out)</option>
+	            	<option id="Cyclic7" value="Cyclic7" style="display: none;">Cyclic7(loop-double-out)</option>
+	            	<option id="Cyclic8" value="Cyclic8" style="display: none;">Cyclic8(loop-double-out)</option>
+	            	<option id="Unlinked1" value="Unlinked1" style="display: none;">Unlinked1</option>
+	                <option id="Unlinked2" value="Unlinked2" style="display: none;">Unlinked2</option>
+
+		        </select>
+			</form>
+		</div>
+
+		<div align="center"  style="margin-top:30px;">
+        	<button id="btn_ready" class="btn-primary btn-lg" disabled ="true" onclick="trial_next()"><b>I Am Ready</b></button>
+    	</div>
+
+    	<div  style="margin-top: 40px">
+			Click <a href="https://eco.ppls.ed.ac.uk/~nbramley/it/exp1.html" target="_blank">here</a> to see the full procedure of Experiment 1, <br> or click <a href="https://eco.ppls.ed.ac.uk/~s1940738/demo/time_intervention/exp2/index.html" target="_blank">here</a> to see the full procedure of Experiment 2.
+		</div>
+	</div>
+</body>
+</html>

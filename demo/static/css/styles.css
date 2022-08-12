@@ -1,0 +1,91 @@
+*{
+/*	border: 1px solid black;*/
+}
+/*type*/
+body{
+	font-family: Helvetica, 'Arial', 'Sans-Serif';
+	background-color: white;
+	color: black;
+	padding:0px;
+    margin: 0px;
+}
+h1{
+	font-size: 40px;
+	font-weight: 100;
+}
+h2 {
+    font-size: 32px;
+    font-weight: 100;
+}
+p {
+    font-size: 24px;
+    line-height: 1.5;
+    color: #333;
+}
+
+div.spacer {
+	clear: both;
+}
+.btn-primary[disabled] {
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
+
+.noselect {
+  -webkit-touch-callout: none; /* iOS Safari */
+    -webkit-user-select: none; /* Safari */
+     -khtml-user-select: none; /* Konqueror HTML */
+       -moz-user-select: none; /* Old versions of Firefox */
+        -ms-user-select: none; /* Internet Explorer/Edge */
+            user-select: none; /* Non-prefixed version, currently
+                                  supported by Chrome, Edge, Opera and Firefox */
+}
+
+.fr_edge{
+	position: absolute;
+	background-color: rgb(191,191,191,0.2);
+	z-index: 0;
+}
+.hint{
+	text-align: center;
+	line-height: 2;
+	font-size: 20px;
+	width: 100%;
+	position: absolute;
+	z-index: 0;
+}
+.node{
+	background-color: #D9D9D9;
+	border: 2px solid #ebebeb;
+	position:absolute;
+	text-align: center;
+	font-size: 28px;
+	z-index: 1;
+}
+.edge{
+	position: absolute;
+	background: #363636;
+	z-index: 2;
+}
+.edge_fb{
+	position: absolute;
+	background: white;
+	z-index: 1;
+}
+.arrow{
+	width: 0;
+	height: 0;
+	position: absolute;
+	z-index: 2;
+}
+.arrow_fb{
+	width: 0;
+	height: 0;
+	position: absolute;
+	z-index: 1;
+}
+.coins{
+	width: 20px;
+	margin-right:1px;
+	margin-left:1px;
+}
