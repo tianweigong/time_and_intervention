@@ -260,7 +260,7 @@ color_lis=list('colli3'=c(1,6,10), 'chain3'=c(2,5,10),'fork3'=c(2,6,9),
 
 pic=18
 color_name=rep(NA,c(12,24)[str_node[ord_ix[pic]]-2])
-color_name[color_lis[[str_name[ord_ix[pic]]]]]='#E8500E'#369a05 #a80d00
+color_name[color_lis[[str_name[ord_ix[pic]]]]]='#FF7518'#369a05 #a80d00
 
 d=df2%>% subset(trName==str_name[ord_ix[pic]]) %>% na.omit()
 d2=d
