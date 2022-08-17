@@ -18,12 +18,12 @@ data.frame(Action=factor(c("A","B","C","A-","B-","C-","N"),levels=c("A","B","C",
   theme(text = element_text(size=12),panel.grid = element_blank(),
         axis.text=element_text(colour="black"),
         )
-
+#data from mdall_exp2.Rda anyone who activate C in the first window
 # ggsave(file="eig_three.pdf",width = 4,height = 2.5)
 
 
 data.frame(Action=factor(c("A","B","C","A-","B-","C-","N"),levels=c("A","B","C","A-","B-","C-","N")),
-           ecc=-c(27.7,27.7,27.7,5.6,5.6,8.2,11.7))%>%
+           ecc=-c(160,160,160,10,10,20,54))%>%
   ggplot(aes(x=Action,y=ecc))+
   geom_bar(stat = "identity",color="black",fill="#D5D5D5")+
   theme_bw()+
@@ -39,8 +39,7 @@ data.frame(Action=factor(c("A","B","C","A-","B-","C-","N"),levels=c("A","B","C",
 
 ##modelling example
 
-load('exp1.Rda')
-df.eve=df.eve %>% subset(time>=0 &time<45000) #avoid some bugs
+load('exp1_final.Rda')
 load('mdall.Rda')
 mdall$prob_noact=0
 tmp=mdall[intersect(which(mdall$choice=="N"),which(mdall$nodeNum==3))]
@@ -90,21 +89,35 @@ col_C="#df9b8c" #red
 col_N="#787878"
 col_eff="#FEAE00"
 
+myRect<-function(p){
+  p+ geom_rect(data=NULL,aes(xmin=1,xmax=2,ymin=-Inf,ymax=Inf),
+               fill="#ededed",color="transparent")+
+    geom_rect(data=NULL,aes(xmin=3,xmax=4,ymin=-Inf,ymax=Inf),
+              fill="#ededed",color="transparent")+
+    geom_rect(data=NULL,aes(xmin=5,xmax=6,ymin=-Inf,ymax=Inf),
+              fill="#ededed",color="transparent")+
+    geom_rect(data=NULL,aes(xmin=7,xmax=8,ymin=-Inf,ymax=Inf),
+              fill="#ededed",color="transparent")+
+    geom_rect(data=NULL,aes(xmin=9,xmax=10,ymin=-Inf,ymax=Inf),
+              fill="#ededed",color="transparent",alpha=0.1)
+}
+
 df.plot%>%
-  ggplot(aes(x=wd-0.5, y=per, color=choice))+
+  ggplot(aes(x=wd-0.5, y=per, color=choice))%>%
+  myRect()+
   geom_point()+
   geom_line(size=0.8)+
   scale_color_manual(name="Action",values = c(col_A,col_B,col_C,col_N))+
-  scale_x_continuous(limits = c(0,10),breaks = seq(0,10,2))+
-  geom_vline(xintercept = 0.84,color=col_A,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 5.255,color=col_C,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 7.755,color=col_B,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 2.340,color=col_eff,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 9.192,color=col_eff,linetype="dashed",size=0.7)+
+  scale_x_continuous(limits = c(0,10),breaks = seq(0,10,1),expand = c(0,0))+
+  geom_vline(xintercept = 0.84,color=col_A,linetype="twodash",size=0.7)+
+  geom_vline(xintercept = 5.255,color=col_C,linetype="twodash",size=0.7)+
+  geom_vline(xintercept = 7.755,color=col_B,linetype="twodash",size=0.7)+
+  # geom_vline(xintercept = 2.340,color=col_eff,linetype="dashed",size=0.7)+
+  # geom_vline(xintercept = 9.192,color=col_eff,linetype="dashed",size=0.7)+
   theme_bw()+
   ylab("Combined Model")+
   xlab("Time (s)")+
-  theme(text = element_text(size=12),
+  theme(text = element_text(size=14),
         axis.text=element_text(colour="black"),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -114,20 +127,19 @@ df.plot%>%
 
 
 df.plot%>%
-  ggplot(aes(x=wd-0.5, y=eig_gr, color=choice))+
+  ggplot(aes(x=wd-0.5, y=eig_gr, color=choice))%>%
+  myRect()+
   geom_point()+
   geom_line(size=0.8)+
   scale_color_manual(name="Action",values = c(col_A,col_B,col_C,col_N))+
-  scale_x_continuous(limits = c(0,10),breaks = seq(0,10,2))+
-  geom_vline(xintercept = 0.84,color=col_A,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 5.255,color=col_C,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 7.755,color=col_B,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 2.340,color=col_eff,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 9.192,color=col_eff,linetype="dashed",size=0.7)+
+  scale_x_continuous(limits = c(0,10),breaks = seq(0,10,1),expand = c(0,0))+
+  geom_vline(xintercept = 0.84,color=col_A,linetype="twodash",size=0.7)+
+  geom_vline(xintercept = 5.255,color=col_C,linetype="twodash",size=0.7)+
+  geom_vline(xintercept = 7.755,color=col_B,linetype="twodash",size=0.7)+
   theme_bw()+
   ylab("EIG")+
   xlab("Time (s)")+
-  theme(text = element_text(size=12),
+  theme(text = element_text(size=14),
         axis.text=element_text(colour="black"),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -136,31 +148,25 @@ df.plot%>%
 # ggsave(file="dyn_ig.pdf",width = 5.5,height = 3.8)
 
 df.plot%>%
-  ggplot(aes(x=wd-0.5, y=-ecc_loc_ply2, color=choice))+
+  ggplot(aes(x=wd-0.5, y=-ecc_loc_ply2, color=choice))%>%
+  myRect()+
   geom_point()+
   geom_line(size=0.8)+
   scale_color_manual(name="Action",values = c(col_A,col_B,col_C,col_N))+
-  scale_x_continuous(limits = c(0,10),breaks = seq(0,10,2))+
-  geom_vline(xintercept = 0.84,color=col_A,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 5.255,color=col_C,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 7.755,color=col_B,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 2.340,color=col_eff,linetype="dashed",size=0.7)+
-  geom_vline(xintercept = 9.192,color=col_eff,linetype="dashed",size=0.7)+
+  scale_x_continuous(limits = c(0,10),breaks = seq(0,10,1),expand = c(0,0))+
+  geom_vline(xintercept = 0.84,color=col_A,linetype="twodash",size=0.7)+
+  geom_vline(xintercept = 5.255,color=col_C,linetype="twodash",size=0.7)+
+  geom_vline(xintercept = 7.755,color=col_B,linetype="twodash",size=0.7)+
   theme_bw()+
   ylab("Minus ECC")+
   xlab("Time (s)")+
-  theme(text = element_text(size=12),
+  theme(text = element_text(size=14),
         axis.text=element_text(colour="black"),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         legend.position = "top")
 
-ggsave(file="dyn_cost.pdf",width = 5.5,height = 3.8)
-
-# 
-# x=df.eve%>% subset(subID=="597ce9658a05ba00010a57b8" & trName=="chain3")%>% 
-#   mutate(dis=round(time*(665-118)/16000+118-0.034*1000-12.5))
-
+# ggsave(file="dyn_cost.pdf",width = 5.5,height = 3.8)
 
 
 ##linear, polynomial, exponential

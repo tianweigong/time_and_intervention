@@ -175,20 +175,20 @@ IOchoice=mdall%>%
   subset(subAct%in%c("A","B","C","D") & choice %in% c("A","B","C","D"))%>%
   mutate(uni_trial=paste(subID,trName,sep="_"))
 
-#root node
-rootnode=list("colli3"=c("B","C"),"chain3"=c("B"),"fork3"=c("B"),
-              "colli4"=c("B","C","D"),"chain4"=c("B"),"fork4"=c("A"),
-              "loop_in3"=c("B"),"loop_inout4"=c("B"),
-              "fully3"=c("B"),"fully4"=c("B"))
-
-df.root=df.where%>%as.data.frame() %>% 
-  subset(act==1 & trName %in% names(rootnode))%>%
-  mutate(uni_trial=paste(subID,trName,sep="_"),root=NA)
-
-for (k in names(rootnode)){
-  a_idx=which(df.root$trName==k)
-  df.root$root[a_idx]=df.root$obj[a_idx] %in% rootnode[[k]]
-}
+# #root node
+# rootnode=list("colli3"=c("B","C"),"chain3"=c("B"),"fork3"=c("B"),
+#               "colli4"=c("B","C","D"),"chain4"=c("B"),"fork4"=c("A"),
+#               "loop_in3"=c("B"),"loop_inout4"=c("B"),
+#               "fully3"=c("B"),"fully4"=c("B"))
+# 
+# df.root=df.where%>%as.data.frame() %>% 
+#   subset(act==1 & trName %in% names(rootnode))%>%
+#   mutate(uni_trial=paste(subID,trName,sep="_"),root=NA)
+# 
+# for (k in names(rootnode)){
+#   a_idx=which(df.root$trName==k)
+#   df.root$root[a_idx]=df.root$obj[a_idx] %in% rootnode[[k]]
+# }
 
 
 #blocking
@@ -647,7 +647,7 @@ df.off %>%
   ylab("Activating Intervention")+
   xlab("Cyclicity")+
   scale_y_continuous(limits = c(0,6))+
-  theme(text = element_text(size=15),
+  theme(text = element_text(size=15.5),
         axis.text=element_text(colour="black"),
         axis.line = element_line(color = 'black'),
         panel.border = element_blank(),
@@ -667,7 +667,7 @@ df.off %>%
   ylab("Activating Intervention")+
   xlab("Structure Nodes")+
   scale_y_continuous(limits = c(0,6))+
-  theme(text = element_text(size=15),
+  theme(text = element_text(size=15.5),
         axis.text=element_text(colour="black"),
         axis.line = element_line(color = 'black'),
         panel.border = element_blank(),
@@ -716,7 +716,7 @@ df.act.ind%>%#(trName %in% v.sti.exp1|cyclic=="unconnected") &
   ylab("Interval (s)")+
   scale_y_continuous(limits = c(0,11),breaks = c(0,3,6,9))+
   theme_bw()+
-  theme(text = element_text(size=15),
+  theme(text = element_text(size=15.5),
         axis.line = element_line(color = 'black'),
         panel.border = element_blank(),
         axis.text=element_text(colour="black"),
@@ -724,7 +724,7 @@ df.act.ind%>%#(trName %in% v.sti.exp1|cyclic=="unconnected") &
         strip.background =element_rect(fill="white",color = "white"),
         panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         legend.position = 'none')
-ggsave(file="exp2_int_timing.pdf",width = 3.5,height = 4)
+# ggsave(file="exp2_int_timing.pdf",width = 3.5,height = 4)
 ```
 
 #where to intervene

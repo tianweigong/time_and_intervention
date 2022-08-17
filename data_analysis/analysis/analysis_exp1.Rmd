@@ -149,19 +149,19 @@ IOchoice=mdall%>%
   subset(subAct%in%c("A","B","C","D") & choice %in% c("A","B","C","D"))%>%
   mutate(uni_trial=paste(subID,trName,sep="_"))
 
-#root node
-rootnode=list("colli3"=c("A","B"),"chain3"=c("A"),"fork3"=c("A"),
-              "colli4"=c("A","B","C"),"chain4"=c("A"),"fork4"=c("A"),
-              "loop_in3"=c("A"),"loop_inout4"=c("A"))
-
-df.root=df.where%>%as.data.frame() %>% 
-  subset(act==1 & trName %in% names(rootnode))%>%
-  mutate(uni_trial=paste(subID,trName,sep="_"),root=NA)
-
-for (k in names(rootnode)){
-  a_idx=which(df.root$trName==k)
-  df.root$root[a_idx]=df.root$obj[a_idx] %in% rootnode[[k]]
-}
+# #root node
+# rootnode=list("colli3"=c("A","B"),"chain3"=c("A"),"fork3"=c("A"),
+#               "colli4"=c("A","B","C"),"chain4"=c("A"),"fork4"=c("A"),
+#               "loop_in3"=c("A"),"loop_inout4"=c("A"))
+# 
+# df.root=df.where%>%as.data.frame() %>% 
+#   subset(act==1 & trName %in% names(rootnode))%>%
+#   mutate(uni_trial=paste(subID,trName,sep="_"),root=NA)
+# 
+# for (k in names(rootnode)){
+#   a_idx=which(df.root$trName==k)
+#   df.root$root[a_idx]=df.root$obj[a_idx] %in% rootnode[[k]]
+# }
 
 # save(df.jud,df.act,df.act.agg,df.eve,df.off,df.root,df.where,file="exp1_forComb.Rda")
 
@@ -523,7 +523,7 @@ df.off %>%
   ylab("Activating Intervention")+
   xlab("Cyclicity")+
   scale_y_continuous(limits = c(0,6))+
-  theme(text = element_text(size=15),
+  theme(text = element_text(size=15.5),
         axis.text=element_text(colour="black"),
         axis.line = element_line(color = 'black'),
         panel.border = element_blank(),
@@ -543,7 +543,7 @@ df.off %>%
   ylab("Activating Intervention")+
   xlab("Structure Nodes")+
   scale_y_continuous(limits = c(0,6))+
-  theme(text = element_text(size=15),
+  theme(text = element_text(size=15.5),
         axis.text=element_text(colour="black"),
         axis.line = element_line(color = 'black'),
         panel.border = element_blank(),
@@ -589,7 +589,7 @@ df.act.ind%>%
   ylab("Interval (s)")+
   scale_y_continuous(limits = c(0,11),breaks = c(0,3,6,9))+
   theme_bw()+
-  theme(text = element_text(size=15),
+  theme(text = element_text(size=15.5),
         axis.line = element_line(color = 'black'),
         panel.border = element_blank(),
         axis.text=element_text(colour="black"),
@@ -597,7 +597,7 @@ df.act.ind%>%
         strip.background =element_rect(fill="white",color = "white"),
         panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         legend.position = 'none')
-ggsave(file="exp1_int_timing.pdf",width = 2.7,height = 4)
+# ggsave(file="exp1_int_timing.pdf",width = 2.7,height = 4)
 # ggsave(file="exp1_timing.pdf",width = 5,height = 5.5)
 ```
 
