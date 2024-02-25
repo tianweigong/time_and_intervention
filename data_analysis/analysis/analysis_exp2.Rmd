@@ -323,7 +323,6 @@ m=lmer(scale(accLink)~delayCond*cyclic*nodeNum+(1+cyclic*nodeNum|subID)+(1+delay
 m%>% summary()
 confint.merMod(m,method = "Wald")
 anova(m)
-
 ```
 
 #Error patterns
